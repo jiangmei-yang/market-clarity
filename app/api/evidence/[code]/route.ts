@@ -75,7 +75,10 @@ async function publicAnnouncementEvidence(code: string, reason: string) {
 }
 
 async function cninfoAnnouncementEvidence(code: string, reason: string) {
-  const securities = await requestJson("https://www.cninfo.com.cn/new/data/szse_stock.json", 12_000) as { stockList?: CninfoSecurity[] };
+  const securities = await requestJson("https://www.cninfo.com.cn/new/data/szse_stock.json", 12_000, {
+    referer: "https://www.cninfo.com.cn/",
+    "user-agent": "Mozilla/5.0 (compatible; AnxinDecisionDesk/1.0)",
+  }) as { stockList?: CninfoSecurity[] };
   const security = securities.stockList?.find((item) => item.code === code);
   if (!security?.orgId) throw new Error("cninfo security mapping unavailable");
   const end = new Date();
@@ -161,14 +164,14 @@ async function cninfoAnnouncementEvidence(code: string, reason: string) {
   }
 }
 
-async function requestJson(url: string, timeoutMs: number) {
+async function requestJson(url: string, timeoutMs: number, extraHeaders: Record<string, string> = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(url, {
       cache: "no-store",
       signal: controller.signal,
-      headers: { accept: "application/json" },
+      headers: { accept: "application/json", ...extraHeaders },
     });
     if (!response.ok) throw new Error(`upstream ${response.status}`);
     return await response.json();
