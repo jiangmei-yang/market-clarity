@@ -12,6 +12,22 @@ type UpstreamResult = {
 
 type HistoryPoint = { date?: string; close?: number; volume?: number };
 
+function marketPrefix(code: string) {
+  if (code.startsWith("6")) return "sh";
+  if (code.startsWith("4") || code.startsWith("8")) return "bj";
+  return "sz";
+}
+
+function normalizeTencentHistory(payload: unknown, code: string): { data: HistoryPoint[]; source: string; is_demo: false } | undefined {
+  if (!payload || typeof payload !== "object") return undefined;
+  const key = `${marketPrefix(code)}${code}`;
+  const record = (payload as { data?: Record<string, { qfqday?: unknown[][]; day?: unknown[][] }> }).data?.[key];
+  const rows = record?.qfqday ?? record?.day ?? [];
+  const data = rows.map((row) => ({ date: String(row[0] ?? ""), close: Number(row[2]), volume: Number(row[5]) }))
+    .filter((point) => point.date && Number.isFinite(point.close));
+  return data.length ? { data, source: "腾讯证券公开行情", is_demo: false } : undefined;
+}
+
 function normalizeHistory(payload: unknown): { data: HistoryPoint[]; source?: string; is_demo?: boolean } | undefined {
   if (!payload || typeof payload !== "object") return undefined;
   const record = payload as { data?: unknown[]; items?: unknown[]; source?: string; is_demo?: boolean };
@@ -70,10 +86,13 @@ export async function GET(
   const quoteUrl = `${baseUrl}/api/v1/stocks/${code}/quote`;
   const historyUrl = `${baseUrl}/api/v1/stocks/${code}/history?period=daily&days=30`;
   const fallbackHistoryUrl = `${dataBaseUrl}/stocks/${code}/prices?days=30`;
-  const [quoteResult, historyResult, fallbackHistoryResult] = await Promise.allSettled([
-    requestJson(quoteUrl, 4_000),
-    requestJson(historyUrl, 6_000),
-    requestJson(fallbackHistoryUrl, 12_000),
+  const publicHistoryUrl = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${marketPrefix(code)}${code},day,,,30,qfq`;
+  const useLocalDefaults = process.env.NODE_ENV !== "production";
+  const [quoteResult, historyResult, fallbackHistoryResult, publicHistoryResult] = await Promise.allSettled([
+    process.env.DAILY_STOCK_ANALYSIS_URL || useLocalDefaults ? requestJson(quoteUrl, 4_000) : Promise.reject(new Error("daily_stock_analysis not configured")),
+    process.env.DAILY_STOCK_ANALYSIS_URL || useLocalDefaults ? requestJson(historyUrl, 6_000) : Promise.reject(new Error("daily_stock_analysis not configured")),
+    process.env.ANXIN_API_URL || useLocalDefaults ? requestJson(fallbackHistoryUrl, 12_000) : Promise.reject(new Error("FastAPI not configured")),
+    requestJson(publicHistoryUrl, 10_000),
   ]);
 
   const result: UpstreamResult = {};
@@ -87,6 +106,9 @@ export async function GET(
     result.history = normalizeHistory(fallbackHistoryResult.value);
   } else if (fallbackHistoryResult.status === "rejected") {
     result.fallbackHistoryError = fallbackHistoryResult.reason instanceof Error ? fallbackHistoryResult.reason.message : "fallback history unavailable";
+  }
+  if (!result.history && publicHistoryResult.status === "fulfilled") {
+    result.history = normalizeTencentHistory(publicHistoryResult.value, code);
   }
   if (!result.quote && result.history) result.quote = quoteFromHistory(result.history as { data: HistoryPoint[] }, code);
 
@@ -104,9 +126,11 @@ export async function GET(
 
   return NextResponse.json({
     status: quoteResult.status === "fulfilled" && historyResult.status === "fulfilled" ? "live" : "partial",
-    provider: result.quote && historyResult.status === "fulfilled"
+    provider: historyResult.status === "fulfilled"
       ? "daily_stock_analysis · AKShare / 东方财富等上游"
-      : "安心看股 FastAPI · AKShare 公开数据",
+      : fallbackHistoryResult.status === "fulfilled"
+        ? "安心看股 FastAPI · AKShare 公开数据"
+        : "腾讯证券公开行情 · 备用数据源",
     fetchedAt: new Date().toISOString(),
     ...result,
   });

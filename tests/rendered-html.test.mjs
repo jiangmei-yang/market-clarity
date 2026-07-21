@@ -31,12 +31,13 @@ test("server-renders the decision workbench", async () => {
 });
 
 test("keeps the daily workflow and decision loop in the product source", async () => {
-  const [page, css, layout, informationRoute, stockSearchRoute] = await Promise.all([
+  const [page, css, layout, informationRoute, stockSearchRoute, evidenceRoute] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/information/[code]/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/stocks/search/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/evidence/[code]/route.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(page, /dailyChanges/);
@@ -113,5 +114,9 @@ test("keeps the daily workflow and decision loop in the product source", async (
   assert.match(page, /正在搜索 A 股列表/);
   assert.match(page, /\/api\/stocks\/search\?q=/);
   assert.match(stockSearchRoute, /stocks\/search/);
+  assert.match(stockSearchRoute, /searchapi\.eastmoney\.com/);
+  assert.match(informationRoute, /web\.ifzq\.gtimg\.cn/);
+  assert.match(evidenceRoute, /np-anotice-stock\.eastmoney\.com/);
+  assert.match(evidenceRoute, /未找到不等于事实不存在/);
   assert.doesNotMatch(page, /买入建议|卖出建议|收益保证/);
 });
