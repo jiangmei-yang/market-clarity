@@ -383,26 +383,52 @@ function StockRail({ selected, onSelect, followedStocks, liveQuote }: { selected
 
 function StartDecisionView({ stock, onSelect, action, setAction, onResearch, onContinue }: { stock: Stock; onSelect: (stock: Stock) => void; action: TradeAction; setAction: (action: TradeAction) => void; onResearch: () => void; onContinue: () => void }) {
   const [query, setQuery] = useState("");
+  const [remoteMatches, setRemoteMatches] = useState<StockSearchItem[]>([]);
+  const [searching, setSearching] = useState(false);
   const holdingValue = holdingValues[stock.code] ?? 0;
   const holdingRatio = holdingValue / TOTAL_ASSETS * 100;
-  const matches = stocks.filter((item) => item.name.includes(query.trim()) || item.code.includes(query.trim()) || item.industry.includes(query.trim()));
+  const localMatches = useMemo(() => stocks.filter((item) => item.name.includes(query.trim()) || item.code.includes(query.trim()) || item.industry.includes(query.trim())), [query]);
+  useEffect(() => {
+    const normalized = query.trim();
+    if (!normalized || localMatches.length > 0) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/stocks/search?q=${encodeURIComponent(normalized)}&limit=8`, { signal: controller.signal, cache: "no-store" });
+        const payload = await response.json() as { items?: StockSearchItem[] };
+        setRemoteMatches(response.ok && Array.isArray(payload.items) ? payload.items : []);
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) setRemoteMatches([]);
+      } finally {
+        if (!controller.signal.aborted) setSearching(false);
+      }
+    }, 280);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [query, localMatches.length]);
+  const matches = useMemo(() => {
+    if (localMatches.length > 0) return localMatches;
+    const remoteStocks = remoteMatches.map((item) => ({ ...createCodeStock(String(item.code).padStart(6, "0")), name: item.name || String(item.code), industry: item.industry || "A股 · 行业待载入" }));
+    if (remoteStocks.length > 0) return remoteStocks;
+    return /^\d{6}$/.test(query.trim()) && !searching ? [createCodeStock(query.trim())] : [];
+  }, [localMatches, query, remoteMatches, searching]);
   const actions: TradeAction[] = ["买入", "补仓", "卖出", "继续观察"];
+  const selectedUsesLiveService = !stocks.some((item) => item.code === stock.code) || stock.price === 0;
   return (
     <main className="start-decision-page view-enter" id="main-content">
       <section className="workspace start-decision-workspace">
         <header className="start-decision-header">
           <div><Badge variant="outline">交易前审查</Badge><h1>选择股票和准备进行的操作</h1><p>系统会使用当前持仓、个人边界和该股票的证据进入下一步。</p></div>
-          <span className="data-provenance"><Database /><b>固定样例</b><small>行情截面 10:32</small></span>
+          <span className="data-provenance"><Database /><b>{selectedUsesLiveService ? "真实数据入口" : "样例行情"}</b><small>{selectedUsesLiveService ? "研究页载入最新资料" : "行情截面 10:32"}</small></span>
         </header>
         <div className="start-decision-grid">
           <section className="stock-picker-panel">
-            <label className="stock-picker-search"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="输入股票名称、代码或行业，例如半导体" aria-label="选择决策股票" /></label>
-            <div className="stock-picker-heading"><strong>选择股票</strong><span>{matches.length} 只可用</span></div>
-            <div className="stock-picker-list">{matches.map((item) => { const held = holdingValues[item.code] ?? 0; return <button key={item.code} className={item.code === stock.code ? "selected" : ""} aria-pressed={item.code === stock.code} onClick={() => onSelect(item)}><span className="stock-picker-ident"><i>{item.name.slice(0, 1)}</i><span><strong>{item.name}</strong><small>{item.code}.{item.market} · {item.industry}</small></span></span><span className="stock-picker-quote"><strong>{item.price.toFixed(2)}</strong><PriceChange value={item.change} /></span><span className="holding-state">{held > 0 ? `持仓 ¥${held.toLocaleString()}` : "未持仓"}</span><CheckCircle2 /></button>; })}{matches.length === 0 && <div className="stock-picker-empty"><Search /><strong>没有找到匹配股票</strong><span>可输入股票简称、6 位代码或行业关键词</span></div>}</div>
+            <label className="stock-picker-search"><Search /><input value={query} onChange={(event) => { const next = event.target.value; setQuery(next); setRemoteMatches([]); const normalized = next.trim(); const hasLocal = stocks.some((item) => item.name.includes(normalized) || item.code.includes(normalized) || item.industry.includes(normalized)); setSearching(Boolean(normalized) && !hasLocal); }} placeholder="输入股票名称、代码或行业，例如半导体" aria-label="选择决策股票" /></label>
+            <div className="stock-picker-heading"><strong>选择股票</strong><span>{searching ? "正在搜索 A 股列表…" : `${matches.length} 只可用`}</span></div>
+            <div className="stock-picker-list">{matches.map((item) => { const held = holdingValues[item.code] ?? 0; return <button key={item.code} className={item.code === stock.code ? "selected" : ""} aria-pressed={item.code === stock.code} onClick={() => onSelect(item)}><span className="stock-picker-ident"><i>{item.name.slice(0, 1)}</i><span><strong>{item.name}</strong><small>{item.code}.{item.market} · {item.industry}</small></span></span><span className="stock-picker-quote">{item.price > 0 ? <><strong>{item.price.toFixed(2)}</strong><PriceChange value={item.change} /></> : <small>研究页载入</small>}</span><span className="holding-state">{held > 0 ? `持仓 ¥${held.toLocaleString()}` : "未持仓"}</span><CheckCircle2 /></button>; })}{matches.length === 0 && <div className="stock-picker-empty"><Search /><strong>{searching ? "正在搜索 A 股列表…" : "没有找到匹配股票"}</strong><span>{searching ? "支持股票简称和 6 位代码" : "可输入股票简称、6 位代码或行业关键词"}</span></div>}</div>
           </section>
           <aside className="decision-setup-panel">
             <div className="selected-stock-summary"><span><i>{stock.name.slice(0, 1)}</i><span><small>当前选择</small><strong>{stock.name}</strong><em>{stock.code}.{stock.market}</em></span></span><PriceChange value={stock.change} /></div>
-            <dl><div><dt>当前持仓</dt><dd>{holdingValue > 0 ? `¥${holdingValue.toLocaleString()}` : "尚无持仓"}</dd></div><div><dt>占记录资产</dt><dd>{holdingValue > 0 ? `${holdingRatio.toFixed(1)}%` : "0.0%"}</dd></div><div><dt>数据状态</dt><dd>固定样例 · 10:32</dd></div></dl>
+            <dl><div><dt>当前持仓</dt><dd>{holdingValue > 0 ? `¥${holdingValue.toLocaleString()}` : "尚无持仓"}</dd></div><div><dt>占记录资产</dt><dd>{holdingValue > 0 ? `${holdingRatio.toFixed(1)}%` : "0.0%"}</dd></div><div><dt>数据状态</dt><dd>{selectedUsesLiveService ? "进入研究页后载入真实资料" : "样例行情 · 10:32"}</dd></div></dl>
             <div className="setup-action"><strong>准备做什么？</strong><div className="action-segments" role="radiogroup" aria-label="新决策操作">{actions.map((item) => { const unavailable = holdingValue === 0 && (item === "补仓" || item === "卖出"); return <button key={item} role="radio" aria-checked={action === item} className={action === item ? "active" : ""} disabled={unavailable} onClick={() => setAction(item)}>{action === item && <Check />}{item}</button>; })}</div></div>
             <div className="setup-note"><ShieldCheck /><p><strong>下一步会检查</strong><span>计划金额、仓位上限、下跌情景和理由证据。</span></p></div>
             <div className="setup-actions"><Button variant="outline" size="lg" onClick={onResearch}>先查看研究</Button><Button size="lg" onClick={action === "继续观察" ? onResearch : onContinue}>{action === "继续观察" ? "进入股票研究" : "继续填写计划"}<ArrowRight data-icon="inline-end" /></Button></div>

@@ -54,6 +54,7 @@ test("keeps the daily workflow and decision loop in the product source", async (
   assert.match(page, /实时行情与历史价格已载入/);
   assert.match(page, /followedStocks\[stock\.code\] === true/);
   assert.match(page, /选择股票和准备进行的操作/);
+  assert.match(page, /进入研究页后载入真实资料/);
   assert.match(page, /输入股票名称、代码或行业，例如半导体/);
   assert.match(page, /stock\.industry\.toLowerCase\(\)\.includes\(normalized\)/);
   assert.match(page, /createCodeStock/);
