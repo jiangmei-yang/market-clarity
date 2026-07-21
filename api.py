@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from threading import Lock
+from time import monotonic
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,6 +27,26 @@ from src.services.trade_attribution import run_trade_attribution
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 ETF_SERVICE = ETFDiagnosisService()
+_PUBLIC_SOURCE_CACHE: dict[tuple[bool, str], tuple[float, object, object]] = {}
+_PUBLIC_SOURCE_CACHE_LOCK = Lock()
+
+
+def _public_sources(market: DataService, code: str):
+    """Cache public provider responses briefly without retaining user reasons."""
+    ttl = max(0, int(os.getenv("PUBLIC_SOURCE_CACHE_TTL_SECONDS", "300")))
+    key = (market.use_demo, code)
+    now = monotonic()
+    if ttl:
+        with _PUBLIC_SOURCE_CACHE_LOCK:
+            cached = _PUBLIC_SOURCE_CACHE.get(key)
+            if cached and cached[0] > now:
+                return cached[1], cached[2]
+    announcements = market.get_announcements(code)
+    news = market.get_stock_news(code)
+    if ttl:
+        with _PUBLIC_SOURCE_CACHE_LOCK:
+            _PUBLIC_SOURCE_CACHE[key] = (now + ttl, announcements, news)
+    return announcements, news
 
 app = FastAPI(
     title="安心看股 API",
@@ -322,8 +344,7 @@ def stock_evidence(
     market = DataService()
     try:
         normalized, name = market.resolve_stock(code)
-        announcements = market.get_announcements(normalized)
-        news = market.get_stock_news(normalized)
+        announcements, news = _public_sources(market, normalized)
         feed = build_information_feed(
             code=normalized,
             name=name,

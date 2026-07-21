@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from api import app
+from api import _PUBLIC_SOURCE_CACHE, _public_sources, app
 from src.data_providers import DataService
 from src.services import StockAnalysisService
 
@@ -57,6 +57,34 @@ def test_stock_evidence_contract(monkeypatch):
     }
     assert body["feed"]["data_mode"] in {"live", "mixed", "demo"}
     assert all({"title", "source", "category", "url"}.issubset(item) for item in body["feed"]["items"])
+
+
+def test_public_source_cache_reuses_provider_data_without_reason(monkeypatch):
+    monkeypatch.setenv("PUBLIC_SOURCE_CACHE_TTL_SECONDS", "300")
+    _PUBLIC_SOURCE_CACHE.clear()
+
+    class FakeMarket:
+        use_demo = False
+
+        def __init__(self):
+            self.announcement_calls = 0
+            self.news_calls = 0
+
+        def get_announcements(self, code):
+            self.announcement_calls += 1
+            return {"kind": "announcements", "code": code}
+
+        def get_stock_news(self, code):
+            self.news_calls += 1
+            return {"kind": "news", "code": code}
+
+    market = FakeMarket()
+    first = _public_sources(market, "600519")
+    second = _public_sources(market, "600519")
+    assert first == second
+    assert market.announcement_calls == 1
+    assert market.news_calls == 1
+    assert all("reason" not in str(key).lower() for key in _PUBLIC_SOURCE_CACHE)
 
 
 def test_mobile_navigation_and_touch_css_present():
