@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="安心看股图标占位">
+  <rect width="512" height="512" rx="112" fill="#2864a5"/>
+  <path d="M256 82 405 137v106c0 96-60 160-149 193-89-33-149-97-149-193V137z" fill="#fff" opacity=".96"/>
+  <path d="m171 267 54 53 117-128" fill="none" stroke="#2864a5" stroke-width="35" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

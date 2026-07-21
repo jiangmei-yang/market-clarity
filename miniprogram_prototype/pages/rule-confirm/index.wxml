@@ -1,0 +1,16 @@
+<view class="page">
+  <view class="title">确认系统的理解</view>
+  <view class="warning">AI 只生成草稿。确认前不会保存，也不会替你决定比例。</view>
+  <block wx:for="{{items}}" wx:key="label">
+    <view class="card"><view class="card-title">{{item.label}}：{{item.value}}</view><view class="muted">理解自：{{item.understood_from}}</view></view>
+  </block>
+  <text class="label">总可投资资金（元）</text><input class="input" type="digit" value="{{profile.total_capital}}" data-key="total_capital" bindinput="edit" />
+  <text class="label">单只股票最高金额（元）</text><input class="input" type="digit" value="{{profile.max_trade_amount}}" data-key="max_trade_amount" bindinput="edit" />
+  <text class="label">最大可承受金额损失（元）</text><input class="input" type="digit" value="{{profile.max_tolerable_loss}}" data-key="max_tolerable_loss" bindinput="edit" />
+  <text class="label">同一行业总投入提醒线（%）</text><input class="input" type="digit" value="{{profile.max_industry_pct}}" data-key="max_industry_pct" bindinput="edit" />
+  <text class="label">亏损后再次补仓的等待时间（小时）</text><input class="input" type="number" value="{{profile.cooldown_hours}}" data-key="cooldown_hours" bindinput="edit" />
+  <view class="row"><text>提醒不要使用借款或生活资金</text><switch checked="{{profile.prohibit_borrowing}}" data-key="prohibit_borrowing" bindchange="toggle" /></view>
+  <view class="row"><text>每笔计划填写判断失效条件</text><switch checked="{{profile.require_invalidation}}" data-key="require_invalidation" bindchange="toggle" /></view>
+  <button class="button-primary" bindtap="confirm">确认并开始</button>
+  <button class="button-secondary" bindtap="back">返回重新描述</button>
+</view>

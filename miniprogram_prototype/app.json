@@ -1,0 +1,18 @@
+{
+  "pages": [
+    "pages/welcome/index",
+    "pages/onboarding/index",
+    "pages/rule-confirm/index",
+    "pages/decision/index",
+    "pages/reason-confirm/index",
+    "pages/review/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "安心看股",
+    "navigationBarBackgroundColor": "#f5f8fb",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f5f8fb"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

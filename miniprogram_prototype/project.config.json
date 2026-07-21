@@ -1,0 +1,13 @@
+{
+  "description": "安心看股微信小程序交互原型",
+  "compileType": "miniprogram",
+  "appid": "touristappid",
+  "projectname": "anshin-decision-review",
+  "miniprogramRoot": "./",
+  "setting": {
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true
+  }
+}

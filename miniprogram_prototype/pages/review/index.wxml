@@ -1,0 +1,14 @@
+<view class="page">
+  <view class="title">第二意见卡</view>
+  <view class="danger"><view class="card-title">{{review.status}}</view>{{review.summary}}</view>
+  <view class="card">
+    <view class="row"><text>计划金额</text><text class="value">¥{{review.plan.amount}}</text></view>
+    <view class="row"><text>执行后单股占比</text><text class="value">{{review.metrics.post_stock_pct}}%</text></view>
+    <view class="row" wx:if="{{scenario}}"><text>若再下跌20%</text><text class="value">约损失 ¥{{scenario.position_loss}}</text></view>
+  </view>
+  <view class="card"><view class="card-title">触发的个人规则</view><block wx:for="{{findings}}" wx:key="title"><view>• {{item.title}}：{{item.explanation}}</view></block></view>
+  <view class="card"><view class="card-title">有限证据</view><block wx:for="{{review.evidence}}" wx:key="title"><view>{{item.title}}</view><view class="muted">{{item.excerpt}}</view></block></view>
+  <text class="label">修改后的金额</text><input class="input" type="digit" value="{{revised}}" bindinput="revise" />
+  <button class="button-primary" bindtap="save">保存修改前后对比</button>
+  <button class="button-secondary" bindtap="finish">已了解，结束检查</button>
+</view>

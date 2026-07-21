@@ -1,0 +1,17 @@
+page { background: #f5f8fb; color: #17212b; font-size: 32rpx; }
+.page { padding: 32rpx; padding-bottom: 80rpx; }
+.eyebrow { color: #27658f; font-size: 26rpx; font-weight: 700; }
+.title { font-size: 48rpx; font-weight: 800; margin: 14rpx 0; }
+.subtitle { color: #536575; line-height: 1.65; margin-bottom: 30rpx; }
+.card { background: #fff; border: 1rpx solid #dce5ec; border-radius: 22rpx; padding: 28rpx; margin: 20rpx 0; }
+.card-title { font-weight: 750; margin-bottom: 12rpx; }
+.muted { color: #687b8b; font-size: 26rpx; line-height: 1.55; }
+.button-primary { background: #246b96; color: #fff; border-radius: 18rpx; margin-top: 24rpx; }
+.button-secondary { background: #fff; color: #246b96; border: 1rpx solid #9eb9cc; border-radius: 18rpx; margin-top: 18rpx; }
+.input { background: #fff; border: 1rpx solid #ccd8e1; border-radius: 16rpx; padding: 22rpx; margin: 12rpx 0 24rpx; min-height: 48rpx; }
+.label { font-weight: 650; margin-top: 20rpx; display: block; }
+.pill { display: inline-block; background: #e9f1f6; color: #315a74; border-radius: 999rpx; padding: 8rpx 16rpx; margin: 6rpx; font-size: 24rpx; }
+.warning { background: #fff7e5; border-left: 8rpx solid #d48806; border-radius: 14rpx; padding: 22rpx; margin: 20rpx 0; }
+.danger { background: #fff0f0; border-left: 8rpx solid #c93b32; border-radius: 14rpx; padding: 22rpx; margin: 20rpx 0; }
+.row { display: flex; justify-content: space-between; gap: 20rpx; margin: 12rpx 0; }
+.value { font-weight: 750; text-align: right; }

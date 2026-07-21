@@ -1,0 +1,10 @@
+<view class="page">
+  <view class="title">检查一笔交易</view>
+  <view class="subtitle">第一次只回答五项，下一步确认系统理解。</view>
+  <text class="label">1. 哪只股票？</text><input class="input" value="{{stock}}" data-key="stock" bindinput="edit" />
+  <text class="label">2. 准备做什么？</text><picker range="{{actions}}" bindchange="action"><view class="input">{{action}}</view></picker>
+  <text class="label">3. 大约多少钱？</text><input class="input" type="digit" value="{{amount}}" data-key="amount" bindinput="edit" />
+  <text class="label">4. 为什么现在想操作？</text><textarea class="input" auto-height value="{{reason}}" data-key="reason" bindinput="edit" />
+  <text class="label">5. 什么情况说明判断可能错了？</text><input class="input" value="{{invalidation}}" data-key="invalidation" bindinput="edit" />
+  <button class="button-primary" loading="{{loading}}" bindtap="parse">整理这笔计划</button>
+</view>

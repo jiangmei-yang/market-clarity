@@ -1,0 +1,14 @@
+<view class="page">
+  <view class="title">用自己的话设置</view>
+  <view class="subtitle">模板只是输入示例，不是投资建议或风险测评。</view>
+  <view>
+    <text class="pill" data-name="强提醒模式" bindtap="chooseTemplate">强提醒</text>
+    <text class="pill" data-name="标准提醒模式" bindtap="chooseTemplate">标准提醒</text>
+    <text class="pill" data-name="自定义提醒模式" bindtap="chooseTemplate">自定义</text>
+  </view>
+  <view class="muted">当前：{{template}}</view>
+  <text class="label">直接描述你的想法</text>
+  <textarea class="input" auto-height maxlength="1000" value="{{text}}" bindinput="onText" placeholder="例如：我大概用20万元，一只股票最好不超过5万元，亏损后补仓时提醒我隔一天再看。" />
+  <button class="button-secondary" disabled>🎙️ 语音描述（原型占位）</button>
+  <button class="button-primary" loading="{{loading}}" bindtap="parse">整理我的回答</button>
+</view>
