@@ -99,6 +99,7 @@ type InformationSnapshot = {
   history?: { data?: LiveHistoryPoint[] };
   evidence?: LiveEvidencePayload;
 };
+type ResearchEvidenceSnapshot = { requestedCode: string; status: "loading" | "ready" | "fallback"; payload?: LiveEvidencePayload };
 type StockSearchItem = { code: string; name: string; industry?: string };
 
 const stocks: Stock[] = [
@@ -483,10 +484,11 @@ function ResearchView({ stock, setStock, action, setAction, onDecision }: { stoc
   const [followedStocks, setFollowedStocks] = useState<Record<string, boolean>>({ "600183": true, "688981": true, "000858": true });
   const [savedResearch, setSavedResearch] = useState<Record<string, boolean>>({});
   const [information, setInformation] = useState<InformationSnapshot>();
+  const [researchEvidence, setResearchEvidence] = useState<ResearchEvidenceSnapshot>();
   const profile = researchProfiles[stock.code] ?? genericResearchProfile;
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`/api/information/${stock.code}?reason=${encodeURIComponent(profile.rumor)}`, { signal: controller.signal })
+    fetch(`/api/information/${stock.code}`, { signal: controller.signal })
       .then(async (response) => {
         const payload = await response.json() as InformationSnapshot;
         setInformation({ ...payload, requestedCode: stock.code, status: response.ok ? payload.status : "fallback" });
@@ -496,12 +498,28 @@ function ResearchView({ stock, setStock, action, setAction, onDecision }: { stoc
         setInformation({ requestedCode: stock.code, status: "fallback", message: "实时服务暂不可用" });
       });
     return () => controller.abort();
+  }, [stock.code]);
+  useEffect(() => {
+    const controller = new AbortController();
+    const requestedCode = stock.code;
+    const timer = window.setTimeout(() => setResearchEvidence({ requestedCode, status: "loading" }), 0);
+    fetch(`/api/evidence/${stock.code}?reason=${encodeURIComponent(profile.rumor)}`, { signal: controller.signal, cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json() as LiveEvidencePayload;
+        setResearchEvidence({ requestedCode, status: response.ok ? "ready" : "fallback", payload: response.ok ? payload : undefined });
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setResearchEvidence({ requestedCode, status: "fallback" });
+      });
+    return () => { window.clearTimeout(timer); controller.abort(); };
   }, [stock.code, profile.rumor]);
   const hasResearchProfile = Boolean(researchProfiles[stock.code]);
   const followed = followedStocks[stock.code] ?? false;
   const saved = savedResearch[stock.code] ?? false;
   const currentInformation = information?.requestedCode === stock.code ? information : undefined;
-  const liveEvidence = currentInformation?.evidence;
+  const currentEvidence = researchEvidence?.requestedCode === stock.code ? researchEvidence : undefined;
+  const liveEvidence = currentEvidence?.payload ?? currentInformation?.evidence;
   const stockEvents = (liveEvidence?.feed?.items ?? []).slice(0, 5).map((item) => ({ date: item.published_at?.slice(0, 10) || "日期未知", type: item.category, title: item.title, detail: item.summary, source: item.source, url: item.url }));
   const evidenceCount = liveEvidence?.feed?.items?.length ?? 0;
   const officialCount = liveEvidence?.radar?.official_count ?? 0;
@@ -531,7 +549,7 @@ function ResearchView({ stock, setStock, action, setAction, onDecision }: { stoc
   const effectiveStock = { ...stock, name: displayName, price: displayPrice, change: displayChange, turnover: displayTurnover };
   const researchSummary = liveEvidence?.assessment?.summary
     ?? (dataStatus === "live" || dataStatus === "partial"
-      ? `已载入 ${historyPoints.length} 个价格点；当前取得 ${officialCount} 条正式披露。缺失的基本面和外部说法不会由系统补写。`
+      ? `已载入 ${historyPoints.length} 个价格点；${currentEvidence?.status === "loading" ? "公开资料仍在并行核实。" : "当前未取得与理由相关的正式披露。"}缺失的基本面和外部说法不会由系统补写。`
       : dataStatus === "loading"
         ? "正在连接公开行情与披露来源，暂不显示未经核实的研究结论。"
         : "实时资料暂不可用。下方判断档案仅用于演示工作流，不代表当前事实。 ");
@@ -544,7 +562,7 @@ function ResearchView({ stock, setStock, action, setAction, onDecision }: { stoc
             <div><div className="stock-title-line"><h1>{displayName}</h1><Badge variant="outline">{stock.code}.{stock.market}</Badge><Button variant="ghost" size="icon-sm" className={followed ? "active" : ""} aria-label={followed ? "取消关注股票" : "关注股票"} aria-pressed={followed} onClick={() => setFollowedStocks((current) => ({ ...current, [stock.code]: !followed }))}>{followed ? <Check /> : <Bookmark />}</Button></div><p>{displayIndustry} · {updateLabel}</p><span className={`live-data-status ${dataStatus}`}><i />{statusLabel}<small>{currentInformation?.provider ?? "daily_stock_analysis"}</small></span></div>
             <div className="stock-live-price"><strong>{displayPrice.toFixed(2)}</strong><PriceChange value={displayChange} /><small>成交额 {displayTurnover}</small></div>
           </header>
-          <section className="since-last-strip"><div><TimerReset /><span><strong>当前资料状态</strong><small>{officialCount} 条正式披露 · {currentInformation?.history?.data?.length ?? 0} 个价格点 · {sourceCount} 个独立来源</small></span></div><button onClick={() => setPanel("证据链")}>查看证据来源 <ChevronRight /></button></section>
+          <section className="since-last-strip"><div><TimerReset /><span><strong>当前资料状态</strong><small>{currentEvidence?.status === "loading" ? "公开资料核实中" : `${officialCount} 条正式披露 · ${sourceCount} 个独立来源`} · {currentInformation?.history?.data?.length ?? 0} 个价格点</small></span></div><button onClick={() => setPanel("证据链")}>查看证据来源 <ChevronRight /></button></section>
           <nav className="research-tabs" aria-label="研究视图">{(["概览", "价格与事件", "证据链", "待验证问题"] as const).map((item) => <button key={item} className={panel === item ? "active" : ""} onClick={() => setPanel(item)}>{item}{item === "证据链" && <i>{evidenceCount}</i>}{item === "待验证问题" && <i>3</i>}</button>)}</nav>
           {panel === "概览" && <div className="research-panel overview-panel">
             <section className="research-verdict"><div className="verdict-heading"><div><Badge variant="secondary"><Sparkles data-icon="inline-start" />研究摘要</Badge><span>{liveEvidence ? "来自本次公开资料检索" : "仅展示已取得的数据"}</span></div><span className="verdict-state"><i />关键证据仍缺失</span></div><p>{researchSummary}</p><div className="verdict-points">{liveEvidence ? <><span><CheckCircle2 /><b>本次核实</b>{liveEvidence.assessment?.status ?? "已返回公开资料"}</span><span><TriangleAlert /><b>来源覆盖</b>{officialCount} 条正式披露 / {sourceCount} 个来源</span><span><Gauge /><b>仍需验证</b>{profile.gap}</span></> : <><span><CheckCircle2 /><b>价格数据</b>{historyReady ? `${historyPoints.length} 个交易日已载入` : "尚未载入"}</span><span><TriangleAlert /><b>正式披露</b>当前未取得</span><span><Gauge /><b>下一步</b>先查看来源，再形成判断</span></>}</div></section>
@@ -557,7 +575,7 @@ function ResearchView({ stock, setStock, action, setAction, onDecision }: { stoc
             </section> : <section className="thesis-card empty-thesis"><div className="thesis-card-heading"><div><span className="eyebrow">我的判断</span><h2>尚未为 {displayName} 建立判断</h2></div><Badge variant="outline">等待用户输入</Badge></div><p>先写清为什么关注、需要核实哪条说法，以及什么情况会推翻判断，再进入交易前审查。</p><button onClick={onDecision}>开始建立判断 <ChevronRight /></button></section>}
           </div>}
           {panel === "价格与事件" && <section className="research-panel chart-panel"><SectionHeader title="价格、成交量与公司事件" meta="前复权 · 日线；事件不等同于价格原因" action={<Badge variant="outline">{statusLabel}</Badge>} /><PriceChart stock={stock} liveHistory={currentInformation?.history?.data} /><div className="event-explorer">{stockEvents.length > 0 ? stockEvents.map((event) => <article key={`${event.url}-${event.title}`}><time>{event.date}</time><Badge variant={event.type === "公司披露" || event.type === "公司公告" ? "secondary" : "outline"}>{event.type}</Badge><a href={event.url} target="_blank" rel="noreferrer"><strong>{event.title}</strong><ExternalLink /></a><p>{event.detail}</p><small>{event.source}</small></article>) : <div className="event-empty"><FileSearch /><strong>尚未取得可核实的公司事件</strong><span>系统不会把演示事件混入真实股票研究。</span></div>}</div></section>}
-          {panel === "证据链" && <section className="research-panel evidence-panel"><div className="evidence-summary"><div><BarChart3 /><span><strong>{sourceCount} 个独立来源</strong><small>正式披露 {officialCount} · 共 {evidenceCount} 条公开资料</small></span></div><div><strong>{officialCount} / {evidenceCount}</strong><span>正式披露</span></div><div className="attention"><strong>{assessmentStatus}</strong><span>{liveEvidence?.assessment?.mode === "openai" ? "AI 受限于当前证据" : "规则核实结果"}</span></div></div><SectionHeader title="证据如何影响判断" meta={liveEvidence?.assessment?.summary ?? "先看来源，再看结论"} action={<Badge variant="outline">{liveEvidence?.feed?.data_mode === "live" ? "实时公开资料" : "资料降级"}</Badge>} /><EvidenceList stockCode={stock.code} liveEvidence={liveEvidence} /></section>}
+          {panel === "证据链" && <section className="research-panel evidence-panel"><div className="evidence-summary"><div><BarChart3 /><span><strong>{currentEvidence?.status === "loading" ? "正在核实来源" : `${sourceCount} 个独立来源`}</strong><small>{currentEvidence?.status === "loading" ? "行情已经独立载入，无需等待证据检索" : `正式披露 ${officialCount} · 共 ${evidenceCount} 条公开资料`}</small></span></div><div><strong>{officialCount} / {evidenceCount}</strong><span>正式披露</span></div><div className="attention"><strong>{currentEvidence?.status === "loading" ? "检索中" : assessmentStatus}</strong><span>{liveEvidence?.assessment?.mode === "openai" ? "AI 受限于当前证据" : "规则核实结果"}</span></div></div><SectionHeader title="证据如何影响判断" meta={liveEvidence?.assessment?.summary ?? (currentEvidence?.status === "loading" ? "正在检索公司公告与公开报道" : "先看来源，再看结论")} action={<Badge variant="outline">{currentEvidence?.status === "loading" ? "核实中" : liveEvidence?.feed?.data_mode === "live" ? "实时公开资料" : "资料降级"}</Badge>} />{currentEvidence?.status === "loading" ? <div className="evidence-loading-state"><FileSearch /><strong>公开资料正在并行核实</strong><span>你可以先查看行情，结果返回后会自动更新。</span></div> : <EvidenceList stockCode={stock.code} liveEvidence={liveEvidence} />}</section>}
           {panel === "待验证问题" && <section className="research-panel questions-section"><SectionHeader title="下一步要验证什么" meta="这些问题会带入决策审查" /><ol><li><span>01</span><p><strong>{profile.gap}何时能够得到确认？</strong><small>优先使用公司公告和下一期财报验证。</small></p><Badge variant="outline">财报发布后</Badge></li><li><span>02</span><p><strong>当前价格是否已经计入主要预期？</strong><small>当前估值位置为 {stock.valuation}。</small></p><Badge variant="outline">持续观察</Badge></li><li><span>03</span><p><strong>什么变化会推翻当前判断？</strong><small>{profile.invalidation}。</small></p><Badge variant="secondary">已设置</Badge></li></ol></section>}
         </article>
         <ResearchActionPanel stock={effectiveStock} action={action} setAction={setAction} onDecision={() => { setStock(effectiveStock); onDecision(); }} saved={saved} dataStatus={dataStatus} onSave={() => setSavedResearch((current) => ({ ...current, [stock.code]: !saved }))} />

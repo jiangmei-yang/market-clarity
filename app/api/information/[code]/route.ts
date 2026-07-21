@@ -5,10 +5,8 @@ const DEFAULT_DSA_URL = "http://127.0.0.1:8000";
 type UpstreamResult = {
   quote?: unknown;
   history?: unknown;
-  evidence?: unknown;
   quoteError?: string;
   historyError?: string;
-  evidenceError?: string;
   fallbackHistoryError?: string;
 };
 
@@ -55,7 +53,7 @@ async function requestJson(url: string, timeoutMs: number) {
 }
 
 export async function GET(
-  request: Request,
+  _request: Request,
   context: { params: Promise<{ code: string }> },
 ) {
   const { code: rawCode } = await context.params;
@@ -68,17 +66,14 @@ export async function GET(
   }
 
   const baseUrl = (process.env.DAILY_STOCK_ANALYSIS_URL || DEFAULT_DSA_URL).replace(/\/$/, "");
-  const evidenceBaseUrl = (process.env.ANXIN_API_URL || "http://127.0.0.1:8001").replace(/\/$/, "");
-  const reason = new URL(request.url).searchParams.get("reason")?.slice(0, 2000) || "";
+  const dataBaseUrl = (process.env.ANXIN_API_URL || "http://127.0.0.1:8001").replace(/\/$/, "");
   const quoteUrl = `${baseUrl}/api/v1/stocks/${code}/quote`;
   const historyUrl = `${baseUrl}/api/v1/stocks/${code}/history?period=daily&days=30`;
-  const evidenceUrl = `${evidenceBaseUrl}/stocks/${code}/evidence?limit=10&reason=${encodeURIComponent(reason)}`;
-  const fallbackHistoryUrl = `${evidenceBaseUrl}/stocks/${code}/prices?days=30`;
-  const [quoteResult, historyResult, evidenceResult, fallbackHistoryResult] = await Promise.allSettled([
+  const fallbackHistoryUrl = `${dataBaseUrl}/stocks/${code}/prices?days=30`;
+  const [quoteResult, historyResult, fallbackHistoryResult] = await Promise.allSettled([
     requestJson(quoteUrl, 4_000),
     requestJson(historyUrl, 6_000),
-    requestJson(evidenceUrl, 20_000),
-    requestJson(fallbackHistoryUrl, 20_000),
+    requestJson(fallbackHistoryUrl, 12_000),
   ]);
 
   const result: UpstreamResult = {};
@@ -94,23 +89,21 @@ export async function GET(
     result.fallbackHistoryError = fallbackHistoryResult.reason instanceof Error ? fallbackHistoryResult.reason.message : "fallback history unavailable";
   }
   if (!result.quote && result.history) result.quote = quoteFromHistory(result.history as { data: HistoryPoint[] }, code);
-  if (evidenceResult.status === "fulfilled") result.evidence = evidenceResult.value;
-  else result.evidenceError = evidenceResult.reason instanceof Error ? evidenceResult.reason.message : "evidence unavailable";
 
-  if (!result.quote && !result.history && !result.evidence) {
+  if (!result.quote && !result.history) {
     return NextResponse.json(
       {
         status: "fallback",
         provider: "daily_stock_analysis",
         message: "实时数据服务暂不可用，前端将保留样例数据并明确标注。",
-        diagnostics: { quote: result.quoteError, history: result.historyError, fallbackHistory: result.fallbackHistoryError, evidence: result.evidenceError },
+        diagnostics: { quote: result.quoteError, history: result.historyError, fallbackHistory: result.fallbackHistoryError },
       },
       { status: 503 },
     );
   }
 
   return NextResponse.json({
-    status: quoteResult.status === "fulfilled" && historyResult.status === "fulfilled" && result.evidence ? "live" : "partial",
+    status: quoteResult.status === "fulfilled" && historyResult.status === "fulfilled" ? "live" : "partial",
     provider: result.quote && historyResult.status === "fulfilled"
       ? "daily_stock_analysis · AKShare / 东方财富等上游"
       : "安心看股 FastAPI · AKShare 公开数据",

@@ -507,6 +507,10 @@ svg { stroke-width: 1.8; }
 .evidence-summary span, .evidence-summary small { color: var(--muted-foreground); font-size: 9px; }
 .evidence-summary .attention { background: var(--gold-soft); }
 .evidence-summary .attention strong, .evidence-summary .attention span { color: var(--gold-strong); }
+.evidence-loading-state { min-height: 230px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--muted-foreground); }
+.evidence-loading-state svg { width: 27px; height: 27px; color: var(--primary); animation: status-pulse 1.5s ease-in-out infinite; }
+.evidence-loading-state strong { color: var(--foreground); font-size: 12px; }
+.evidence-loading-state span { font-size: 9px; }
 .dossier-section { border-bottom: 1px solid var(--border); }
 .dossier-section:last-child { border-bottom: 0; }
 .research-lead { max-width: 900px; margin: 22px; color: color-mix(in oklch, var(--foreground), white 17%); font-size: 15px; font-weight: 520; line-height: 1.85; }

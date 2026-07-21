@@ -61,6 +61,8 @@ test("keeps the daily workflow and decision loop in the product source", async (
   assert.match(page, /genericResearchProfile/);
   assert.match(page, /liveEvidence/);
   assert.match(page, /实时公开资料/);
+  assert.match(page, /公开资料正在并行核实/);
+  assert.match(page, /ResearchEvidenceSnapshot/);
   assert.match(page, /evidence-title-link/);
   assert.match(page, /核实这条说法/);
   assert.match(page, /本次实时公开资料/);
@@ -101,7 +103,8 @@ test("keeps the daily workflow and decision loop in the product source", async (
   assert.match(layout, /lang="zh-CN"/);
   assert.match(informationRoute, /fallbackHistoryUrl/);
   assert.match(informationRoute, /quoteFromHistory/);
-  assert.match(informationRoute, /!result\.quote && !result\.history && !result\.evidence/);
+  assert.match(informationRoute, /!result\.quote && !result\.history/);
+  assert.doesNotMatch(informationRoute, /evidenceUrl/);
   assert.match(page, /正在搜索 A 股列表/);
   assert.match(page, /\/api\/stocks\/search\?q=/);
   assert.match(stockSearchRoute, /stocks\/search/);
