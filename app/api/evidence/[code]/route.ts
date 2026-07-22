@@ -208,7 +208,7 @@ export async function GET(
     );
   }
   const relevantTerms = CLAIM_TERMS.filter((term) => reason.includes(term)).sort();
-  const cacheKey = `evidence:${code}:${relevantTerms.join("|") || "general"}`;
+  const cacheKey = `evidence:v2:${code}:${relevantTerms.join("|") || "general"}`;
   const recent = readCached<Record<string, unknown>>(cacheKey, 5 * 60 * 1000);
   if (recent) {
     return NextResponse.json({

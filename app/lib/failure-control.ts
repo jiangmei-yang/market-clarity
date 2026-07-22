@@ -79,7 +79,8 @@ export async function withControlledRetry<T>(operation:(attempt:number)=>Promise
 }
 
 export function reliabilityFromFreshness(state:FreshnessState,options:{fallback?:boolean;message?:string}={}):ReliabilityState{
-  if(state.freshness_status==="stale"||options.fallback)return reliability({status:"stale",message:options.message??"当前显示最近一次成功数据，不能据此生成新信号。",last_success_at:state.updated_at,data_timestamp:state.updated_at,fallback_used:state.fallback_source??state.source,allow_signal:false,warnings:["数据已降级或超过业务有效期"]});
+  if(state.freshness_status==="stale")return reliability({status:"stale",message:options.message??"当前显示最近一次成功数据，不能据此生成新信号。",last_success_at:state.updated_at,data_timestamp:state.updated_at,fallback_used:state.fallback_source??null,allow_signal:false,warnings:["数据已超过业务有效期"]});
   if(state.freshness_status==="unknown")return reliability({status:"unavailable",message:options.message??"无法确认数据时间。",error_code:"DATA_TIMESTAMP_UNKNOWN",allow_signal:false,retryable:true});
+  if(options.fallback)return reliability({status:"degraded",message:options.message??"当前使用已标明的备用数据源。",last_success_at:state.updated_at,data_timestamp:state.updated_at,fallback_used:state.source,allow_signal:false,warnings:["主数据源未使用；备用数据仍在有效期内"]});
   return reliability({status:"healthy",message:options.message??"数据在有效期内。",last_success_at:state.updated_at,data_timestamp:state.updated_at,allow_signal:true});
 }

@@ -126,6 +126,38 @@ test("documents a reproducible external validation protocol",()=>{
   assert.match(loop,/0 位外部参与者/);
 });
 
+test("measures live market and disclosure route reliability on a fixed sample",()=>{
+  const runner=read("app/components/data-source-evaluation-runner.tsx");
+  const store=read("app/lib/data-source-evaluation.ts");
+  const sample=read("app/lib/data-source-evaluation-sample.ts");
+  const page=read("app/evaluation/page.tsx");
+  assert.match(runner,/10 只固定样本/);
+  assert.equal((sample.match(/code:"\d{6}"/g)??[]).length,10);
+  assert.match(store,/固定样本顺序或内容已被修改/);
+  assert.match(store,/cleanStatus/);
+  assert.match(store,/超出允许范围/);
+  assert.match(runner,/\/api\/information\/\$\{item\.code\}/);
+  assert.match(runner,/\/api\/evidence\/\$\{item\.code\}/);
+  assert.match(store,/p50LatencyMs/);
+  assert.match(store,/p95LatencyMs/);
+  assert.match(store,/cacheHitRate/);
+  assert.match(store,/sourceCoverageRate/);
+  assert.match(store,/样本只代表本次时间与网络环境/);
+  assert.match(page,/DataSourceEvaluationRunner/);
+  assert.doesNotMatch(runner,/cache_hit&&value!=="healthy"/);
+  assert.doesNotMatch(runner,/演示行情|模拟行情/);
+});
+
+test("keeps the fifth judge score tied to measured data evidence",()=>{
+  const loop=read("CRITICAL_LOOP_ITERATION_05.md");
+  const judge=read("COURSE_JUDGE_REVIEW.md");
+  assert.match(loop,/\*\*92\/100\*\*/);
+  assert.match(loop,/P95 延迟 \| 1,069 ms/);
+  assert.match(loop,/0 \/ 20 \/ 0 \/ 0/);
+  assert.match(judge,/当前可辩护分数为 \*\*92\/100\*\*/);
+  assert.match(loop,/仍不宣称 95/);
+});
+
 test("does not label the initial health check as a retrying failure",()=>{
   const status=read("app/components/system-reliability-center.tsx");
   assert.match(status,/status\?label\[status\]:"检查中"/);

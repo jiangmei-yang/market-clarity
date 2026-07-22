@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
 import test from "node:test";
-import {FAILURE_STATUSES,aggregateReliability,classifyProviderResponse,freshness,reliability,withControlledRetry} from "../app/lib/failure-control.ts";
+import {FAILURE_STATUSES,aggregateReliability,classifyProviderResponse,freshness,reliability,reliabilityFromFreshness,withControlledRetry} from "../app/lib/failure-control.ts";
 
 const read=(path)=>readFile(new URL(path,import.meta.url),"utf8");
 
@@ -16,6 +16,15 @@ test("marks expired data stale and blocks new signals",()=>{
   assert.equal(state.max_age,21600);
   const summary=aggregateReliability([reliability({status:"healthy",message:"ok"}),reliability({status:"stale",message:"old",allow_signal:false})]);
   assert.equal(summary.status,"stale");assert.equal(summary.allow_signal,false);assert.equal(summary.allow_trade,false);
+});
+
+test("distinguishes a fresh fallback from stale data",()=>{
+  const state=freshness("news","2026-07-23T04:00:00.000Z","东方财富公告聚合","巨潮资讯",Date.parse("2026-07-23T05:00:00.000Z"));
+  const result=reliabilityFromFreshness(state,{fallback:true});
+  assert.equal(state.freshness_status,"fresh");
+  assert.equal(result.status,"degraded");
+  assert.equal(result.allow_signal,false);
+  assert.equal(result.fallback_used,"东方财富公告聚合");
 });
 
 test("classifies provider failures without blind retries",()=>{
@@ -56,4 +65,5 @@ test("makes cache, source, model and permissions visible in the product shell",a
   const [center,market,evidence,financial]=await Promise.all([read("../app/components/system-reliability-center.tsx"),read("../app/api/market/overview/route.ts"),read("../app/api/evidence/[code]/route.ts"),read("../app/api/financial/[code]/route.ts")]);
   for(const phrase of ["当前模型","研究信号","真实交易","重新检查"])assert.match(center,new RegExp(phrase));
   for(const source of [market,evidence,financial]){assert.match(source,/freshness_status/);assert.match(source,/allow_signal:false/);assert.match(source,/fallback_used/);}
+  assert.match(evidence,/evidence:v2:/);
 });
