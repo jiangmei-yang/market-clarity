@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readCached, storeCached } from "../../../lib/data-cache";
 
 type EastmoneyIndex = {
   f2?: number;
@@ -16,6 +17,7 @@ const INDEXES = [
 ];
 
 export async function GET() {
+  const cacheKey = "market:overview:v1";
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8_000);
   try {
@@ -44,13 +46,17 @@ export async function GET() {
       };
     }).filter(Boolean);
     if (items.length === 0) throw new Error("empty market response");
-    return NextResponse.json({
+    const result = {
       status: items.length === INDEXES.length ? "live" : "partial",
       source: "东方财富公开行情",
       fetched_at: new Date().toISOString(),
       items,
-    });
+    };
+    storeCached(cacheKey, result);
+    return NextResponse.json(result, { headers: { "cache-control": "public, max-age=20, stale-while-revalidate=180" } });
   } catch (error) {
+    const cached = readCached<Record<string, unknown>>(cacheKey, 30 * 60 * 1000);
+    if (cached) return NextResponse.json({ ...cached.value, status: "cached", cached_at: cached.cachedAt, cache_age_seconds: cached.ageSeconds, message: "实时指数源暂不可用，当前显示最近一次成功读取的数据。" });
     return NextResponse.json({
       status: "unavailable",
       source: "东方财富公开行情",

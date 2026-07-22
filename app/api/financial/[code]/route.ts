@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readCached, storeCached } from "../../../lib/data-cache";
 
 const DEFAULT_ANXIN_API_URL = "http://127.0.0.1:8001";
 const SINA_FINANCE_URL = "https://quotes.sina.cn/cn/api/openapi.php/CompanyFinanceService.getFinanceReport2022";
@@ -120,6 +121,7 @@ export async function GET(_request: Request, context: { params: Promise<{ code: 
   const { code: rawCode } = await context.params;
   const code = rawCode.trim();
   if (!/^\d{6}$/.test(code)) return NextResponse.json({ message: "请输入 6 位 A 股代码" }, { status: 400 });
+  const cacheKey = `financial:${code}:v1`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 25_000);
   try {
@@ -128,11 +130,13 @@ export async function GET(_request: Request, context: { params: Promise<{ code: 
       try {
         const baseUrl = (process.env.ANXIN_API_URL || DEFAULT_ANXIN_API_URL).replace(/\/$/, "");
         const response = await fetch(`${baseUrl}/stocks/${code}/financial-health`, { cache: "no-store", signal: controller.signal, headers: { accept: "application/json" } });
-        if (response.ok) return NextResponse.json(await response.json());
+        if (response.ok) { const payload = await response.json(); storeCached(cacheKey, payload); return NextResponse.json(payload); }
       } catch { /* Continue to the public server-side fallback. */ }
     }
-    return NextResponse.json(await publicFinancialHealth(code, controller.signal));
+    const payload = await publicFinancialHealth(code, controller.signal); storeCached(cacheKey, payload); return NextResponse.json(payload, { headers: { "cache-control": "public, max-age=3600, stale-while-revalidate=86400" } });
   } catch (error) {
+    const cached = readCached<Record<string, unknown>>(cacheKey, 7 * 24 * 60 * 60 * 1000);
+    if (cached) return NextResponse.json({ ...cached.value, data_status: { ...((cached.value.data_status as Record<string, unknown> | undefined) ?? {}), mode: "cached", cached_at: cached.cachedAt, message: "公开财报源暂不可用，当前显示最近一次成功读取的报表。" } });
     return NextResponse.json({ message: error instanceof Error && error.name === "AbortError" ? "财报读取超时，请稍后重试" : `财报服务暂不可用；没有使用演示结果代替。${error instanceof Error ? ` ${error.message}` : ""}` }, { status: 503 });
   } finally { clearTimeout(timeout); }
 }

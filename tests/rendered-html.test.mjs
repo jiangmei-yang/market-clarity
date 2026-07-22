@@ -101,7 +101,13 @@ test("keeps the daily workflow and decision loop in the product source", async (
   assert.match(page, /关键金额仍由确定性代码计算/);
   assert.match(page, /English Beta 尚未开放/);
   assert.match(page, /不连接证券账户/);
-  assert.match(page, /清空本设备数据/);
+  assert.match(page, /清空全部个人数据/);
+  assert.match(page, /个人云端空间/);
+  assert.match(page, /不可逆散列键/);
+  assert.match(page, /\/api\/me\/snapshot/);
+  assert.match(page, /沪深300（同起点）/);
+  assert.match(page, /随后 5 个交易日/);
+  assert.match(page, /判断已到复核时间/);
   assert.match(page, /匿名测试编号/);
   assert.match(page, /愿意了解付费测试/);
   assert.match(page, /看懂主要风险/);
@@ -197,7 +203,7 @@ test("keeps the daily workflow and decision loop in the product source", async (
   assert.match(page, /对照最近判断/);
   assert.match(page, /尚未记录判断/);
   assert.match(page, /const savedQuestion = recordedJudgment/);
-  assert.match(page, /事件后首个交易日收盘/);
+  assert.match(page, /随后 5 个交易日/);
   assert.match(page, /按当前持仓机械换算/);
   assert.match(page, /时间相邻不代表因果/);
   assert.match(financialPanel, /异常勾稽明细/);

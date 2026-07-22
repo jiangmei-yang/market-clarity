@@ -2,6 +2,10 @@
 
 基于 vinext 的安心看股桌面工作台。它把股票研究、公开来源核实、交易前决策验证、ETF 持仓诊断、财报体检和交易复盘放在同一条桌面工作流中。
 
+当前版本已经接入 ChatGPT 登录与 D1 个人数据同步。提醒规则、手动持仓、关注股票和决策记录会按不可逆用户映射键保存在个人空间，同时在浏览器保留离线备份。行情、公告、财报和市场基准在上游短暂失败时会显示最近一次成功缓存及明确状态，不会以演示数据冒充实时数据。
+
+股票研究的“价格与事件”画布同时显示个股、沪深300同起点走势，以及事件后 1 个和 5 个交易日的变化。时间相邻和相对基准表现均不被解释为因果关系。
+
 ## Prerequisites
 
 - Node.js `>=22.13.0`
@@ -50,9 +54,9 @@ This starter does not use `wrangler.jsonc`.
 ## Included Shape
 
 - edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
+- `.openai/hosting.json` declares the Sites D1 binding used for personal snapshots
 - `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
+- `db/schema.ts` defines the hashed-owner personal snapshot table
 - `examples/d1/` contains an optional D1 example surface
 - `drizzle.config.ts` supports local migration generation when needed
 

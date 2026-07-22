@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readCached, storeCached } from "../../../lib/data-cache";
 
 const DEFAULT_DSA_URL = "http://127.0.0.1:8000";
 
@@ -95,6 +96,7 @@ export async function GET(
       { status: 400 },
     );
   }
+  const cacheKey = `information:${code}:v2`;
 
   const baseUrl = (process.env.DAILY_STOCK_ANALYSIS_URL || DEFAULT_DSA_URL).replace(/\/$/, "");
   const dataBaseUrl = (process.env.ANXIN_API_URL || "http://127.0.0.1:8001").replace(/\/$/, "");
@@ -153,21 +155,25 @@ export async function GET(
   if (!result.quote && result.history) result.quote = quoteFromHistory(result.history as { data: HistoryPoint[] }, code);
 
   if (!result.quote && !result.history) {
+    const cached = readCached<Record<string, unknown>>(cacheKey, 24 * 60 * 60 * 1000);
+    if (cached) return NextResponse.json({ ...cached.value, status: "cached", cachedAt: cached.cachedAt, cacheAgeSeconds: cached.ageSeconds, message: "实时行情源暂不可用，当前显示最近一次成功读取的数据。" });
     return NextResponse.json(
       {
         status: "fallback",
         provider: "daily_stock_analysis",
-        message: "实时数据服务暂不可用，前端将保留样例数据并明确标注。",
+        message: "实时数据服务暂不可用；没有使用样例行情代替。",
         diagnostics: { quote: result.quoteError, history: result.historyError, fallbackHistory: result.fallbackHistoryError },
       },
       { status: 503 },
     );
   }
 
-  return NextResponse.json({
+  const payload = {
     status: quoteResult.status === "fulfilled" && historyResult.status === "fulfilled" ? "live" : "partial",
     provider: (result.history as { source?: string } | undefined)?.source || (quoteResult.status === "fulfilled" ? "daily_stock_analysis · 公开行情" : "公开行情备用源"),
     fetchedAt: new Date().toISOString(),
     ...result,
-  });
+  };
+  storeCached(cacheKey, payload);
+  return NextResponse.json(payload, { headers: { "cache-control": "public, max-age=30, stale-while-revalidate=300" } });
 }

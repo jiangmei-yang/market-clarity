@@ -59,8 +59,11 @@ type View = "desk" | "research" | "newDecision" | "decision" | "decisionResult" 
 type TradeAction = "买入" | "补仓" | "卖出" | "继续观察";
 type UserRules = { investableCapital: number; maxSingleStockValue: number; maxSingleStockRatio: number; singleAmountAlert: number; coolingHours: number; requireInvalidation: boolean };
 type HoldingBook = Record<string, { name: string; value: number }>;
+type WatchBook = Record<string, { name: string }>;
 type ReasonStructure = { fact: string; external: string; inference: string; urgency: string; source: string };
 type TestFeedback = { testerCode: string; satisfaction: number; riskUnderstood: boolean; repeatIntent: boolean; paidIntent: boolean; confusingStep: string; submittedAtIso: string };
+type CloudSyncStatus = "loading" | "saving" | "synced" | "local";
+type CloudSnapshot = { rules?: UserRules; holdings?: HoldingBook; watched?: WatchBook; decisionRecords?: DecisionResult[]; latestDecision?: DecisionResult };
 type DecisionResult = { stock: Stock; action: TradeAction; originalAmount: number; finalAmount: number; result: "已修改" | "维持计划" | "已延迟"; message: string; reason?: string; reasonStructure?: ReasonStructure; invalidation?: string; horizon?: string; reviewedAt?: string; reviewedAtIso?: string; ruleSnapshot?: UserRules; issues?: string[]; remainingIssues?: string[]; scenarioLoss?: number; originalScenarioLoss?: number; durationSeconds?: number; evidence?: LiveEvidencePayload; feedback?: TestFeedback };
 type ResearchDecisionContext = { reason: string; evidence?: LiveEvidencePayload };
 
@@ -100,7 +103,7 @@ type LiveEvidencePayload = {
 };
 type InformationSnapshot = {
   requestedCode?: string;
-  status: "live" | "partial" | "fallback";
+  status: "live" | "partial" | "cached" | "fallback";
   provider?: string;
   fetchedAt?: string;
   message?: string;
@@ -135,10 +138,19 @@ const LOCAL_DECISION_KEY = "anxin.latestDecision.v1";
 const LOCAL_DECISIONS_KEY = "anxin.decisionRecords.v1";
 const LOCAL_RULES_KEY = "anxin.userRules.v1";
 const LOCAL_HOLDINGS_KEY = "anxin.holdings.v1";
+const LOCAL_WATCHED_KEY = "anxin.watched.v1";
 const DEFAULT_RULES: UserRules = { investableCapital: TOTAL_ASSETS, maxSingleStockValue: 60000, maxSingleStockRatio: 25, singleAmountAlert: 30000, coolingHours: 24, requireInvalidation: true };
 const STRONG_RULES: UserRules = { investableCapital: TOTAL_ASSETS, maxSingleStockValue: 48000, maxSingleStockRatio: 20, singleAmountAlert: 20000, coolingHours: 24, requireInvalidation: true };
 const DEFAULT_HOLDINGS: HoldingBook = {};
 const holdingValueFor = (holdings: HoldingBook, code: string) => holdings[code]?.value ?? 0;
+const reviewDueDate = (record: DecisionResult) => {
+  if (!record.reviewedAtIso) return undefined;
+  const due = new Date(record.reviewedAtIso);
+  if (Number.isNaN(due.getTime())) return undefined;
+  const days = record.horizon === "1周" ? 7 : record.horizon === "3个月" ? 90 : 30;
+  due.setDate(due.getDate() + days);
+  return due;
+};
 const formatSourceTimestamp = (value?: string) => {
   if (!value) return "—";
   const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -168,9 +180,9 @@ const researchProfiles: Record<string, { thesis: string; invalidation: string; c
 const genericResearchProfile = { thesis: "先明确想验证的判断，再决定是否进入交易审查", invalidation: "尚未设置", confirmed: "真实行情、历史价格和近期正式披露可核实", uncertain: "财务基本面和用户看到的外部说法尚未核实", tradeoff: "仅凭价格和新闻数量不能形成完整判断", gap: "基本面、原始说法与判断条件", suggestedReason: "我最近关注到这只股票，想先核实相关信息再决定是否操作。", suggestedAmount: 10000, rumor: "尚未输入外部说法", inference: "关注度不等于确定的上涨依据" };
 
 type EvidenceItem = { date: string; type: string; title: string; status: string; impact: string; detail: string; source?: string; url?: string };
-type DeskUpdate = { id: string; stockCode: string; stockName: string; time: string; scope: "持仓"; source: string; title: string; detail: string; impact: string; tone: "support" | "uncertain" | "weaken"; priority: "高" | "中"; judgment?: string; judgmentTime?: string; url?: string };
+type DeskUpdate = { id: string; stockCode: string; stockName: string; time: string; scope: "持仓" | "关注"; source: string; title: string; detail: string; impact: string; tone: "support" | "uncertain" | "weaken"; priority: "高" | "中"; judgment?: string; judgmentTime?: string; url?: string };
 type HoldingCoverage = { code: string; name: string; status: "ready" | "partial" | "unavailable"; price?: number; change?: number; announcementCount: number; provider?: string };
-type MarketOverview = { status: "loading" | "live" | "partial" | "unavailable"; source: string; fetchedAt?: string; message?: string; items: Array<{ code: string; name: string; value: number; change: number; updatedAt?: string }> };
+type MarketOverview = { status: "loading" | "live" | "partial" | "cached" | "unavailable"; source: string; fetchedAt?: string; message?: string; items: Array<{ code: string; name: string; value: number; change: number; updatedAt?: string }> };
 type SourceCheck = { category: string; source: string; status: "loading" | "live" | "partial" | "unavailable"; updatedAt: string; detail: string };
 type HeaderFreshness = { state: "checking" | "ready" | "partial"; quote: string; evidence: string };
 const LOADING_SOURCE_CHECKS: SourceCheck[] = ["行情", "公告", "财报"].map((category) => ({ category, source: "正在连接", status: "loading", updatedAt: "—", detail: "检查公开数据源" }));
@@ -222,7 +234,7 @@ function AppRail({ view, onView, hasPending }: { view: View; onView: (view: View
   );
 }
 
-function AppHeader({ view, stockCode, freshnessOverride, userName, onNewDecision, onSelectStock, onDataStatus }: { view: View; stockCode: string; freshnessOverride?: { stockCode: string; value: HeaderFreshness }; userName: string; onNewDecision: () => void; onSelectStock: (stock: Stock) => void; onDataStatus: () => void }) {
+function AppHeader({ view, stockCode, freshnessOverride, userName, syncStatus, onNewDecision, onSelectStock, onDataStatus }: { view: View; stockCode: string; freshnessOverride?: { stockCode: string; value: HeaderFreshness }; userName: string; syncStatus: CloudSyncStatus; onNewDecision: () => void; onSelectStock: (stock: Stock) => void; onDataStatus: () => void }) {
   const titles: Record<View, string> = { desk: "工作台", research: "股票研究", newDecision: "新建决策", decision: "决策验证", decisionResult: "审查记录", history: "历史记录", portfolio: "我的持仓", rules: "我的规则", privacy: "数据和隐私" };
   const [query, setQuery] = useState("");
   const [remoteMatches, setRemoteMatches] = useState<StockSearchItem[]>([]);
@@ -300,7 +312,7 @@ function AppHeader({ view, stockCode, freshnessOverride, userName, onNewDecision
   };
   return (
     <header className="app-header">
-      <div className="header-title"><strong>{titles[view]}</strong><span>{view === "research" ? "实时行情以页内更新时间为准" : "个人数据记录在本设备"}</span></div>
+      <div className="header-title"><strong>{titles[view]}</strong><span>{view === "research" ? "实时行情以页内更新时间为准" : syncStatus === "synced" ? "个人数据已加密标识并同步" : syncStatus === "saving" ? "正在同步个人数据" : syncStatus === "loading" ? "正在读取个人数据" : "云端暂不可用 · 已保存在本设备"}</span></div>
       <form className="global-search" onSubmit={(event) => { event.preventDefault(); submitSearch(); }}>
         <Search />
         <input value={query} onChange={(event) => { setQuery(event.target.value); setRemoteMatches([]); setSearching(false); setSearchMessage(""); }} placeholder="搜索股票、代码或行业" aria-label="搜索股票" autoComplete="off" />
@@ -405,25 +417,30 @@ function RecentTable({ onHistory, records }: { onHistory?: () => void; records: 
   );
 }
 
-function DeskView({ onDecision, onResearch, onHistory, onPortfolio, latest, records, holdings, rules }: { onDecision: () => void; onResearch: (stock?: Stock) => void; onHistory: () => void; onPortfolio: () => void; latest?: DecisionResult; records: DecisionResult[]; holdings: HoldingBook; rules: UserRules }) {
+function DeskView({ onDecision, onResearch, onHistory, onPortfolio, latest, records, holdings, watched, rules }: { onDecision: () => void; onResearch: (stock?: Stock) => void; onHistory: () => void; onPortfolio: () => void; latest?: DecisionResult; records: DecisionResult[]; holdings: HoldingBook; watched: WatchBook; rules: UserRules }) {
   const [marketOverview, setMarketOverview] = useState<MarketOverview>({ status: "loading", source: "东方财富公开行情", items: [] });
   const [updates, setUpdates] = useState<DeskUpdate[]>([]);
   const [coverage, setCoverage] = useState<HoldingCoverage[]>([]);
-  const [updatesLoading, setUpdatesLoading] = useState(Object.keys(holdings).length > 0);
+  const [updatesLoading, setUpdatesLoading] = useState(Object.keys(holdings).length + Object.keys(watched).length > 0);
   const [updatesError, setUpdatesError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
   const [refreshedAt, setRefreshedAt] = useState("");
+  const [currentTime] = useState(() => Date.now());
   useEffect(() => {
     const controller = new AbortController();
     fetch("/api/market/overview", { signal: controller.signal, cache: "no-store" })
       .then(async (response) => {
-        const payload = await response.json() as { status?: "live" | "partial" | "unavailable"; source?: string; fetched_at?: string; message?: string; items?: Array<{ code: string; name: string; value: number; change: number; updated_at?: string }> };
-        setMarketOverview({ status: response.ok ? payload.status ?? "partial" : "unavailable", source: payload.source ?? "东方财富公开行情", fetchedAt: payload.fetched_at, message: payload.message, items: (payload.items ?? []).map((item) => ({ ...item, updatedAt: item.updated_at })) });
+        const payload = await response.json() as { status?: "live" | "partial" | "cached" | "unavailable"; source?: string; fetched_at?: string; cached_at?: string; message?: string; items?: Array<{ code: string; name: string; value: number; change: number; updated_at?: string }> };
+        setMarketOverview({ status: response.ok ? payload.status ?? "partial" : "unavailable", source: payload.status === "cached" ? `${payload.source ?? "东方财富公开行情"} · 最近缓存` : payload.source ?? "东方财富公开行情", fetchedAt: payload.cached_at ?? payload.fetched_at, message: payload.message, items: (payload.items ?? []).map((item) => ({ ...item, updatedAt: item.updated_at })) });
       })
       .catch((error: unknown) => { if (!(error instanceof DOMException && error.name === "AbortError")) setMarketOverview({ status: "unavailable", source: "东方财富公开行情", message: "指数行情暂不可用", items: [] }); });
     return () => controller.abort();
   }, []);
-  const holdingEntries = useMemo(() => Object.entries(holdings).map(([code, item]) => ({ code, ...item })).sort((a, b) => b.value - a.value).slice(0, 5), [holdings]);
+  const holdingEntries = useMemo(() => {
+    const entries = new Map(Object.entries(watched).map(([code, item]) => [code, { code, name: item.name, value: 0 }]));
+    Object.entries(holdings).forEach(([code, item]) => entries.set(code, { code, ...item }));
+    return [...entries.values()].sort((a, b) => b.value - a.value).slice(0, 8);
+  }, [holdings, watched]);
   const latestDecisionByCode = useMemo(() => records.reduce<Record<string, DecisionResult>>((result, record) => {
     if (!result[record.stock.code]) result[record.stock.code] = record;
     return result;
@@ -452,9 +469,9 @@ function DeskView({ onDecision, onResearch, onHistory, onPortfolio, latest, reco
       const judgmentImpact = judgment ? "对照最近判断" : "尚未记录判断";
       const itemUpdates: DeskUpdate[] = announcementItems.map((item, index) => {
         const important = /业绩|减持|增持|回购|重大|风险|停牌|重组|处罚/.test(item.title);
-        return { id: `${holding.code}-${item.url || index}`, stockCode: holding.code, stockName: displayName, time: item.published_at?.slice(5, 10) || "日期未知", scope: "持仓", source: item.source, title: `${displayName}：${item.title}`, detail: item.summary || "打开公告原文查看完整披露。", impact: judgmentImpact, tone: "uncertain", priority: important || Boolean(judgment) ? "高" : "中", judgment, judgmentTime: priorDecision?.reviewedAt, url: item.url };
+        return { id: `${holding.code}-${item.url || index}`, stockCode: holding.code, stockName: displayName, time: item.published_at?.slice(5, 10) || "日期未知", scope: holding.value > 0 ? "持仓" : "关注", source: item.source, title: `${displayName}：${item.title}`, detail: item.summary || "打开公告原文查看完整披露。", impact: judgmentImpact, tone: "uncertain", priority: important || Boolean(judgment) ? "高" : "中", judgment, judgmentTime: priorDecision?.reviewedAt, url: item.url };
       });
-      if (quote && Math.abs(quote.change_percent ?? 0) >= 2) itemUpdates.push({ id: `${holding.code}-price`, stockCode: holding.code, stockName: displayName, time: quote.update_time?.slice(5, 10) || "最近交易日", scope: "持仓", source: information?.provider || "公开行情", title: `${displayName}最近交易日变动 ${(quote.change_percent ?? 0) >= 0 ? "+" : ""}${(quote.change_percent ?? 0).toFixed(2)}%`, detail: `最近收盘价 ¥${quote.current_price.toFixed(2)}。价格变化不等同于公司基本面发生变化。`, impact: judgmentImpact, tone: "uncertain", priority: Math.abs(quote.change_percent ?? 0) >= 5 || Boolean(judgment) ? "高" : "中", judgment, judgmentTime: priorDecision?.reviewedAt });
+      if (quote && Math.abs(quote.change_percent ?? 0) >= 2) itemUpdates.push({ id: `${holding.code}-price`, stockCode: holding.code, stockName: displayName, time: quote.update_time?.slice(5, 10) || "最近交易日", scope: holding.value > 0 ? "持仓" : "关注", source: information?.provider || "公开行情", title: `${displayName}最近交易日变动 ${(quote.change_percent ?? 0) >= 0 ? "+" : ""}${(quote.change_percent ?? 0).toFixed(2)}%`, detail: `最近收盘价 ¥${quote.current_price.toFixed(2)}。价格变化不等同于公司基本面发生变化。`, impact: judgmentImpact, tone: "uncertain", priority: Math.abs(quote.change_percent ?? 0) >= 5 || Boolean(judgment) ? "高" : "中", judgment, judgmentTime: priorDecision?.reviewedAt });
       return { updates: itemUpdates, coverage: { code: holding.code, name: displayName, status: information || evidence ? information && evidence ? "ready" as const : "partial" as const : "unavailable" as const, price: quote?.current_price, change: quote?.change_percent, announcementCount: evidence?.radar?.official_count ?? announcementItems.length, provider: information?.provider } };
     }))
       .then((results) => {
@@ -474,6 +491,7 @@ function DeskView({ onDecision, onResearch, onHistory, onPortfolio, latest, reco
   const largestPosition = positions[0];
   const boundaryConflict = largestPosition && (largestPosition.ratio > rules.maxSingleStockRatio || largestPosition.value > rules.maxSingleStockValue) ? largestPosition : undefined;
   const leadingUpdate = updates.find((item) => item.priority === "高") ?? updates[0];
+  const dueDecision = records.find((record) => (reviewDueDate(record)?.getTime() ?? Infinity) <= currentTime);
   const coveredCount = coverage.filter((item) => item.status !== "unavailable").length;
   const targetFor = (code: string, name: string) => stocks.find((stock) => stock.code === code) ?? { ...createCodeStock(code), name };
   return (
@@ -483,13 +501,18 @@ function DeskView({ onDecision, onResearch, onHistory, onPortfolio, latest, reco
         {marketOverview.status === "loading" ? <div className="market-context-loading"><i /><i /><i /></div> : marketOverview.items.length > 0 ? <div className="market-index-list">{marketOverview.items.map((item) => <article key={item.code}><span>{item.name}</span><strong>{item.value.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong><PriceChange value={item.change} /></article>)}</div> : <div className="market-context-unavailable"><TriangleAlert /><span>{marketOverview.message ?? "指数行情暂不可用"}</span></div>}
         <div className="market-context-source"><span>{marketOverview.source}</span><time>{marketOverview.fetchedAt ? formatSourceTimestamp(marketOverview.fetchedAt) : "正在连接"}</time></div>
       </section>
-      <section className={`workbench-priority ${boundaryConflict ? "attention" : leadingUpdate ? "information" : "quiet"}`}>
+      <section className={`workbench-priority ${boundaryConflict ? "attention" : dueDecision || leadingUpdate ? "information" : "quiet"}`}>
         <div className="workbench-section-title"><span>现在先处理</span>{refreshedAt && <time>更新于 {refreshedAt}</time>}</div>
         {boundaryConflict ? <div className="priority-editorial">
           <span className="priority-signal"><TriangleAlert /></span>
           <div><small>持仓边界</small><h1>{boundaryConflict.name}占记录资金 {boundaryConflict.ratio.toFixed(1)}%</h1><p>你的单股比例上限为 {rules.maxSingleStockRatio}%，当前持仓金额 ¥{boundaryConflict.value.toLocaleString()}。</p></div>
           <div className="priority-scale" aria-label={`${boundaryConflict.name}持仓比例 ${boundaryConflict.ratio.toFixed(1)}%，个人上限 ${rules.maxSingleStockRatio}%`}><span><i style={{ width: `${Math.min(boundaryConflict.ratio, 100)}%` }} /><b style={{ left: `${Math.min(rules.maxSingleStockRatio, 100)}%` }} /></span><small>当前 {boundaryConflict.ratio.toFixed(1)}%</small><small>上限 {rules.maxSingleStockRatio}%</small></div>
           <Button onClick={() => onResearch(targetFor(boundaryConflict.code, boundaryConflict.name))}>查看持仓影响<ArrowRight data-icon="inline-end" /></Button>
+        </div> : dueDecision ? <div className="priority-editorial">
+          <span className="priority-signal verified"><CalendarClock /></span>
+          <div><small>判断已到复核时间</small><h1>{dueDecision.stock.name} · 回到当时的理由和证据</h1><p>{dueDecision.reason || "这条记录已到你设置的观察期限。"}</p></div>
+          <div className="priority-fact"><span>当时的选择</span><strong>{dueDecision.action} · {dueDecision.result}</strong><small>观察期限 {dueDecision.horizon ?? "1个月"}</small></div>
+          <Button onClick={onHistory}>开始重新核实<ArrowRight data-icon="inline-end" /></Button>
         </div> : leadingUpdate ? <div className="priority-editorial">
           <span className="priority-signal verified"><FileSearch /></span>
           <div><small>{leadingUpdate.source} · {leadingUpdate.time}</small><h1>{leadingUpdate.title}</h1><p>{leadingUpdate.detail}</p></div>
@@ -624,14 +647,10 @@ function StartDecisionView({ stock, onSelect, action, setAction, onResearch, onC
   );
 }
 
-function buildLiveChartPath(points: LiveHistoryPoint[]) {
-  if (points.length < 2) return "";
-  const values = points.map((point) => Number(point.close)).filter(Number.isFinite);
-  const minimum = Math.min(...values);
-  const maximum = Math.max(...values);
+function buildComparablePath(points: LiveHistoryPoint[], minimum: number, maximum: number) {
   const spread = Math.max(maximum - minimum, 0.01);
   return points.map((point, index) => {
-    const x = index / (points.length - 1) * 690;
+    const x = index / Math.max(points.length - 1, 1) * 690;
     const y = 174 - ((Number(point.close) - minimum) / spread) * 148;
     return `${index === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`;
   }).join(" ");
@@ -640,12 +659,27 @@ function buildLiveChartPath(points: LiveHistoryPoint[]) {
 function PriceChart({ stock, liveHistory, events, holdingValue, capital }: { stock: Stock; liveHistory?: LiveHistoryPoint[]; events: Array<{ date: string; type: string; title: string; detail: string; source: string; url: string }>; holdingValue: number; capital: number }) {
   const [range, setRange] = useState<"1月" | "3月" | "1年">("1月");
   const [selectedEventIndex, setSelectedEventIndex] = useState(0);
+  const [benchmark, setBenchmark] = useState<LiveHistoryPoint[]>([]);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/market/benchmark", { cache: "no-store", signal: controller.signal })
+      .then(async (response) => response.ok ? await response.json() as { data?: LiveHistoryPoint[] } : { data: [] })
+      .then((payload) => setBenchmark(payload.data ?? []))
+      .catch((error: unknown) => { if (!(error instanceof DOMException && error.name === "AbortError")) setBenchmark([]); });
+    return () => controller.abort();
+  }, []);
   const rangeDays = { "1月": 22, "3月": 66, "1年": 250 }[range];
   const livePoints = liveHistory && liveHistory.length > 1 ? liveHistory.slice(-rangeDays) : undefined;
   if (!livePoints) return <div className="event-chart-empty"><TriangleAlert /><span><strong>历史价格暂不可用</strong><small>系统不会用样例曲线替代；恢复数据源后可重新打开本页。</small></span></div>;
-  const chartPath = buildLiveChartPath(livePoints);
-  const chartHigh = Math.max(...livePoints.map((point) => Number(point.close)));
-  const chartLow = Math.min(...livePoints.map((point) => Number(point.close)));
+  const benchmarkByDate = new Map(benchmark.map((point) => [point.date.slice(0, 10), point.close]));
+  const benchmarkBase = benchmarkByDate.get(livePoints[0].date.slice(0, 10));
+  const stockBase = Number(livePoints[0].close);
+  const benchmarkComparable = benchmarkBase ? livePoints.map((point) => ({ date: point.date, close: stockBase * ((benchmarkByDate.get(point.date.slice(0, 10)) ?? benchmarkBase) / benchmarkBase) })) : [];
+  const combinedValues = [...livePoints, ...benchmarkComparable].map((point) => Number(point.close));
+  const chartHigh = Math.max(...combinedValues);
+  const chartLow = Math.min(...combinedValues);
+  const chartPath = buildComparablePath(livePoints, chartLow, chartHigh);
+  const benchmarkPath = benchmarkComparable.length > 1 ? buildComparablePath(benchmarkComparable, chartLow, chartHigh) : "";
   const axisPrecision = stock.price >= 100 ? 0 : 2;
   const axisValues = [0, 1 / 3, 2 / 3, 1].map((step) => (chartHigh - (chartHigh - chartLow) * step).toFixed(axisPrecision));
   const dateLabels = [livePoints[0].date, livePoints[Math.floor(livePoints.length / 3)].date, livePoints[Math.floor(livePoints.length * 2 / 3)].date, livePoints.at(-1)?.date ?? ""];
@@ -657,10 +691,15 @@ function PriceChart({ stock, liveHistory, events, holdingValue, capital }: { sto
     if (pointIndex < 0 || event.date < livePoints[0].date || event.date > (livePoints.at(-1)?.date ?? "")) return undefined;
     const point = livePoints[pointIndex];
     const nextPoint = livePoints[Math.min(pointIndex + 1, livePoints.length - 1)];
+    const fifthPoint = livePoints[Math.min(pointIndex + 5, livePoints.length - 1)];
     const x = pointIndex / (livePoints.length - 1) * 690;
     const y = 174 - ((Number(point.close) - chartLow) / Math.max(chartHigh - chartLow, 0.01)) * 148;
     const nextChange = point.close ? (nextPoint.close / point.close - 1) * 100 : 0;
-    return { ...event, pointIndex, point, nextPoint, nextChange, x, y };
+    const fifthChange = point.close ? (fifthPoint.close / point.close - 1) * 100 : 0;
+    const benchmarkAtEvent = benchmarkByDate.get(point.date.slice(0, 10));
+    const benchmarkAfter = benchmarkByDate.get(fifthPoint.date.slice(0, 10));
+    const benchmarkChange = benchmarkAtEvent && benchmarkAfter ? (benchmarkAfter / benchmarkAtEvent - 1) * 100 : undefined;
+    return { ...event, pointIndex, point, nextPoint, fifthPoint, nextChange, fifthChange, benchmarkChange, x, y };
   }).filter((item): item is NonNullable<typeof item> => Boolean(item)).sort((a, b) => a.date.localeCompare(b.date)).slice(-4);
   const activeEventIndex = Math.min(selectedEventIndex, Math.max(eventMarkers.length - 1, 0));
   const selectedEvent = eventMarkers[activeEventIndex];
@@ -674,15 +713,16 @@ function PriceChart({ stock, liveHistory, events, holdingValue, capital }: { sto
         <defs><linearGradient id="chartFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="var(--primary)" stopOpacity=".2"/><stop offset="100%" stopColor="var(--primary)" stopOpacity="0"/></linearGradient></defs>
         <path className="chart-area" d={`${chartPath} L690 190 L0 190 Z`} />
         <path className="chart-line" d={chartPath} />
+        {benchmarkPath && <path className="chart-benchmark-line" d={benchmarkPath} />}
         {eventMarkers.map((event, index) => <g key={`${event.date}-${event.title}`} className={index === activeEventIndex ? "chart-event-marker active" : "chart-event-marker"}><line x1={event.x} x2={event.x} y1="18" y2="178" /><circle cx={event.x} cy={event.y} r={index === activeEventIndex ? 6 : 4} /><text x={event.x} y="14" textAnchor="middle">{index + 1}</text></g>)}
       </svg>
       <div className="chart-dates">{dateLabels.map((date) => <span key={date}>{date.slice(0, 10)}</span>)}</div>
       </div>
       <div className="volume-strip" aria-label="成交量变化">{volumes.map((value, index) => <i key={index} style={{ height: `${value}%` }} />)}</div>
-      <div className="chart-legend"><span><i className="price-line-key" />收盘价</span><span><i className="event-key" />公司事件</span><span><i className="volume-key" />成交量</span></div>
+      <div className="chart-legend"><span><i className="price-line-key" />{stock.name}</span>{benchmarkPath && <span><i className="benchmark-line-key" />沪深300（同起点）</span>}<span><i className="event-key" />公司事件</span><span><i className="volume-key" />成交量</span></div>
       {eventMarkers.length > 0 ? <section className="event-price-bridge" aria-label="事件与价格变化对照">
         <div className="event-marker-list">{eventMarkers.map((event, index) => <button key={`${event.date}-${event.title}`} className={index === activeEventIndex ? "active" : ""} onClick={() => setSelectedEventIndex(index)}><i>{index + 1}</i><span><small>{event.date} · {event.type}</small><strong>{event.title}</strong></span></button>)}</div>
-        {selectedEvent && <article className="selected-event-impact"><header><span><Badge variant="outline">事件 {activeEventIndex + 1}</Badge><small>{selectedEvent.source}</small></span>{selectedEvent.url && <a href={selectedEvent.url} target="_blank" rel="noreferrer">原始来源<ExternalLink /></a>}</header><h3>{selectedEvent.title}</h3><p>{selectedEvent.detail}</p><div className="event-impact-metrics"><div><span>事件后首个交易日收盘</span><strong>¥{selectedEvent.point.close.toFixed(2)}</strong><small>{selectedEvent.point.date.slice(0, 10)}</small></div><ArrowRight /><div><span>下一交易日变化</span><strong className={selectedEvent.nextChange >= 0 ? "price-up" : "price-down"}>{selectedEvent.nextChange >= 0 ? "+" : ""}{selectedEvent.nextChange.toFixed(2)}%</strong><small>{selectedEvent.nextPoint.date.slice(0, 10)}</small></div><ArrowRight /><div><span>按当前持仓机械换算</span><strong>{holdingValue > 0 ? `${mechanicalImpact >= 0 ? "+" : "−"}¥${Math.abs(mechanicalImpact).toLocaleString("zh-CN", { maximumFractionDigits: 0 })}` : "尚无持仓"}</strong><small>{holdingValue > 0 ? `持仓 ¥${holdingValue.toLocaleString()} · 占记录资金 ${capital > 0 ? (holdingValue / capital * 100).toFixed(1) : "0.0"}%` : "导入持仓后显示金额影响"}</small></div></div><footer>时间相邻不代表因果；金额仅按价格变化机械换算，不是事件归因。</footer></article>}
+        {selectedEvent && <article className="selected-event-impact"><header><span><Badge variant="outline">事件 {activeEventIndex + 1}</Badge><small>{selectedEvent.source}</small></span>{selectedEvent.url && <a href={selectedEvent.url} target="_blank" rel="noreferrer">原始来源<ExternalLink /></a>}</header><h3>{selectedEvent.title}</h3><p>{selectedEvent.detail}</p><div className="event-impact-metrics"><div><span>下一交易日</span><strong className={selectedEvent.nextChange >= 0 ? "price-up" : "price-down"}>{selectedEvent.nextChange >= 0 ? "+" : ""}{selectedEvent.nextChange.toFixed(2)}%</strong><small>{selectedEvent.nextPoint.date.slice(0, 10)}</small></div><ArrowRight /><div><span>随后 5 个交易日</span><strong className={selectedEvent.fifthChange >= 0 ? "price-up" : "price-down"}>{selectedEvent.fifthChange >= 0 ? "+" : ""}{selectedEvent.fifthChange.toFixed(2)}%</strong><small>{typeof selectedEvent.benchmarkChange === "number" ? `同期沪深300 ${selectedEvent.benchmarkChange >= 0 ? "+" : ""}${selectedEvent.benchmarkChange.toFixed(2)}%` : "基准数据暂不可用"}</small></div><ArrowRight /><div><span>按当前持仓机械换算</span><strong>{holdingValue > 0 ? `${mechanicalImpact >= 0 ? "+" : "−"}¥${Math.abs(mechanicalImpact).toLocaleString("zh-CN", { maximumFractionDigits: 0 })}` : "尚无持仓"}</strong><small>{holdingValue > 0 ? `按下一交易日 · 占记录资金 ${capital > 0 ? (holdingValue / capital * 100).toFixed(1) : "0.0"}%` : "导入持仓后显示金额影响"}</small></div></div><footer>时间相邻不代表因果；跑赢基准也不能证明事件是价格变化原因。金额仅按价格变化机械换算。</footer></article>}
       </section> : <div className="event-chart-empty"><FileSearch /><span><strong>当前价格区间内没有可定位事件</strong><small>取得带日期的正式披露后，事件会标注在价格曲线上。</small></span></div>}
     </div>
   );
@@ -706,11 +746,11 @@ function ResearchActionPanel({ stock, action, setAction, onDecision, saved, onSa
   );
 }
 
-function ResearchView({ stock, setStock, action, setAction, onDecision, holdings, capital, records }: { stock: Stock; setStock: (stock: Stock) => void; action: TradeAction; setAction: (action: TradeAction) => void; onDecision: (context?: ResearchDecisionContext) => void; holdings: HoldingBook; capital: number; records: DecisionResult[] }) {
+function ResearchView({ stock, setStock, action, setAction, onDecision, holdings, watched, onWatch, capital, records }: { stock: Stock; setStock: (stock: Stock) => void; action: TradeAction; setAction: (action: TradeAction) => void; onDecision: (context?: ResearchDecisionContext) => void; holdings: HoldingBook; watched: WatchBook; onWatch: (stock: Stock, followed: boolean) => void; capital: number; records: DecisionResult[] }) {
   const [panel, setPanel] = useState<"概览" | "财报体检" | "价格与事件" | "证据链" | "待验证问题">("价格与事件");
   const [researchQuery, setResearchQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
-  const [followedStocks, setFollowedStocks] = useState<Record<string, boolean>>({ "600183": true, "688981": true, "000858": true });
+  const followedStocks = useMemo(() => Object.fromEntries(Object.keys(watched).map((code) => [code, true])), [watched]);
   const [savedResearch, setSavedResearch] = useState<Record<string, boolean>>({});
   const [information, setInformation] = useState<InformationSnapshot>();
   const [researchEvidence, setResearchEvidence] = useState<ResearchEvidenceSnapshot>();
@@ -804,7 +844,7 @@ function ResearchView({ stock, setStock, action, setAction, onDecision, holdings
   const updateLabel = quote?.update_time
     ? `最近交易日 ${new Date(quote.update_time).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}`
     : dataStatus === "loading" ? "等待公开行情" : "公开行情暂不可用";
-  const statusLabel = dataStatus === "live" ? "实时数据" : dataStatus === "partial" ? "部分实时" : dataStatus === "loading" ? "连接数据源" : "数据暂不可用";
+  const statusLabel = dataStatus === "live" ? "实时数据" : dataStatus === "partial" ? "部分实时" : dataStatus === "cached" ? "最近缓存" : dataStatus === "loading" ? "连接数据源" : "数据暂不可用";
   const effectiveStock = { ...stock, name: displayName, price: displayPrice ?? 0, change: displayChange ?? 0, turnover: displayTurnover };
   const researchSummary = liveEvidence?.assessment?.summary
     ?? (dataStatus === "live" || dataStatus === "partial"
@@ -827,7 +867,7 @@ function ResearchView({ stock, setStock, action, setAction, onDecision, holdings
       <main className="research-layout" id="main-content">
         <article className="workspace research-dossier">
           <header className="stock-dossier-header">
-            <div><div className="stock-title-line"><h1>{displayName}</h1><Badge variant="outline">{stock.code}.{stock.market}</Badge><Button variant="ghost" size="icon-sm" className={followed ? "active" : ""} aria-label={followed ? "取消关注股票" : "关注股票"} aria-pressed={followed} onClick={() => setFollowedStocks((current) => ({ ...current, [stock.code]: !followed }))}>{followed ? <Check /> : <Bookmark />}</Button></div><p>{displayIndustry} · {updateLabel}</p><span className={`live-data-status ${dataStatus}`}><i />{statusLabel}<small>{currentInformation?.provider ?? "daily_stock_analysis"}</small></span></div>
+            <div><div className="stock-title-line"><h1>{displayName}</h1><Badge variant="outline">{stock.code}.{stock.market}</Badge><Button variant="ghost" size="icon-sm" className={followed ? "active" : ""} aria-label={followed ? "取消关注股票" : "关注股票"} aria-pressed={followed} onClick={() => onWatch({ ...effectiveStock, name: displayName }, !followed)}>{followed ? <Check /> : <Bookmark />}</Button></div><p>{displayIndustry} · {updateLabel}</p><span className={`live-data-status ${dataStatus}`}><i />{statusLabel}<small>{currentInformation?.provider ?? "daily_stock_analysis"}</small></span></div>
             <div className="stock-live-price"><strong>{typeof displayPrice === "number" ? displayPrice.toFixed(2) : "—"}</strong>{typeof displayChange === "number" && <PriceChange value={displayChange} />}<small>成交额 {displayTurnover}</small></div>
           </header>
           <form className="research-query-bar" onSubmit={(event) => { event.preventDefault(); const query = researchQuery.trim(); if (!query) return; setSubmittedQuery(query); setPanel("证据链"); }}>
@@ -946,9 +986,9 @@ function RulesView({ rules, onSave, onBack }: { rules: UserRules; onSave: (rules
   );
 }
 
-function PrivacyView({ recordCount, holdingCount, onClear, onBack }: { recordCount: number; holdingCount: number; onClear: () => void; onBack: () => void }) {
+function PrivacyView({ recordCount, holdingCount, syncStatus, onClear, onBack }: { recordCount: number; holdingCount: number; syncStatus: CloudSyncStatus; onClear: () => void; onBack: () => void }) {
   const [confirmClear, setConfirmClear] = useState(false);
-  return <main className="privacy-page view-enter" id="main-content"><section className="workspace privacy-workspace"><header className="privacy-header"><div><Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft data-icon="inline-start" />返回</Button><h1>数据和隐私</h1><p>这里说明当前桌面版实际保存什么、向哪些公开服务发出请求，以及如何删除数据。</p></div><span><LockKeyhole /><b>不连接证券账户</b><small>不保存账户密码或交易权限</small></span></header><section className="privacy-local-summary"><div><span>本设备决策记录</span><strong>{recordCount}</strong><small>浏览器本地存储</small></div><div><span>本设备持仓条目</span><strong>{holdingCount}</strong><small>手动填写或 CSV 导入</small></div><div><span>自动交易权限</span><strong>无</strong><small>不会连接券商或执行下单</small></div></section><div className="privacy-grid"><section><SectionHeader title="哪些数据会保存" meta="仅为完成决策流程" /><div className="privacy-data-list"><article><strong>个人提醒规则</strong><span>记录资金、单股边界、单笔提醒、冷静时间与是否填写失效条件</span><Badge variant="outline">本浏览器</Badge></article><article><strong>手动持仓</strong><span>股票代码、名称与用户填写的金额；不需要成本价或证券账户</span><Badge variant="outline">本浏览器</Badge></article><article><strong>决策记录</strong><span>计划金额、理由拆解、失效条件、规则快照与当时取得的证据摘要</span><Badge variant="outline">本浏览器</Badge></article><article><strong>ETF / 交易复盘输入</strong><span>在当前会话中计算；刷新页面后不会作为个人账户数据保存</span><Badge variant="outline">当前会话</Badge></article></div></section><section><SectionHeader title="会访问哪些第三方服务" meta="公开资料与可选 AI" /><div className="privacy-service-list"><article><div><strong>腾讯证券公开行情</strong><span>历史价格与成交量</span></div><small>发送：股票代码</small></article><article><div><strong>巨潮资讯、东方财富公告</strong><span>法定披露与公告聚合</span></div><small>发送：股票代码与检索词</small></article><article><div><strong>新浪财经公开财务报表</strong><span>资产负债表、利润表与现金流量表</span></div><small>发送：股票代码</small></article><article><div><strong>东方财富、天天基金公开数据</strong><span>ETF 搜索与定期披露持仓</span></div><small>发送：ETF 代码或名称</small></article><article><div><strong>可选大语言模型</strong><span>仅在服务器配置密钥时整理理由和有限检索资料；未配置时使用本地规则</span></div><small>可能发送：理由、资料标题、摘要、来源；关键金额仍由确定性代码计算</small></article></div></section></div><section className="privacy-boundaries"><div><ShieldCheck /><span><strong>产品边界</strong><small>不推荐必买或必卖，不预测保证收益，不自动交易。AI 或规则生成的文字只用于信息整理与风险复核，不构成投资建议。</small></span></div><div><TriangleAlert /><span><strong>不要输入</strong><small>证券账户密码、身份证号、银行卡号、短信验证码或任何可以授权交易的信息。</small></span></div><div><CircleHelp /><span><strong>语言版本</strong><small>当前真实用户测试只开放完整中文界面。English Beta 尚未开放，避免半译状态影响金融信息理解。</small></span></div></section><footer className="privacy-controls"><div><strong>管理本设备数据</strong><span>完整决策记录可在“历史记录”导出 JSON；持仓可在“我的持仓”导出 CSV。</span></div>{confirmClear ? <div className="privacy-clear-confirm"><span>此操作无法撤销。确认清空持仓、规则和决策记录？</span><Button variant="outline" onClick={() => setConfirmClear(false)}>取消</Button><Button onClick={onClear}>确认清空</Button></div> : <Button variant="outline" onClick={() => setConfirmClear(true)}>清空本设备数据</Button>}</footer></section></main>;
+  return <main className="privacy-page view-enter" id="main-content"><section className="workspace privacy-workspace"><header className="privacy-header"><div><Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft data-icon="inline-start" />返回</Button><h1>数据和隐私</h1><p>这里说明当前桌面版实际保存什么、向哪些公开服务发出请求，以及如何删除数据。</p></div><span><LockKeyhole /><b>不连接证券账户</b><small>不保存账户密码或交易权限</small></span></header><section className="privacy-local-summary"><div><span>决策记录</span><strong>{recordCount}</strong><small>{syncStatus === "synced" ? "已同步到个人云端空间" : "云端不可用时保存在本设备"}</small></div><div><span>持仓条目</span><strong>{holdingCount}</strong><small>手动填写或 CSV 导入</small></div><div><span>自动交易权限</span><strong>无</strong><small>不会连接券商或执行下单</small></div></section><div className="privacy-grid"><section><SectionHeader title="哪些数据会保存" meta="仅为完成决策流程" /><div className="privacy-data-list"><article><strong>个人提醒规则</strong><span>记录资金、单股边界、单笔提醒、冷静时间与是否填写失效条件</span><Badge variant="outline">个人云端 + 本机备份</Badge></article><article><strong>手动持仓</strong><span>股票代码、名称与用户填写的金额；不需要成本价或证券账户</span><Badge variant="outline">个人云端 + 本机备份</Badge></article><article><strong>决策记录</strong><span>计划金额、理由拆解、失效条件、规则快照与当时取得的证据摘要</span><Badge variant="outline">个人云端 + 本机备份</Badge></article><article><strong>登录标识</strong><span>服务器只保存由 ChatGPT 登录邮箱生成的不可逆散列键，不在记录中保存邮箱</span><Badge variant="outline">服务器</Badge></article><article><strong>ETF / 交易复盘输入</strong><span>在当前会话中计算；刷新页面后不会作为个人账户数据保存</span><Badge variant="outline">当前会话</Badge></article></div></section><section><SectionHeader title="会访问哪些第三方服务" meta="公开资料与可选 AI" /><div className="privacy-service-list"><article><div><strong>腾讯证券公开行情</strong><span>历史价格与成交量</span></div><small>发送：股票代码</small></article><article><div><strong>巨潮资讯、东方财富公告</strong><span>法定披露与公告聚合</span></div><small>发送：股票代码与检索词</small></article><article><div><strong>新浪财经公开财务报表</strong><span>资产负债表、利润表与现金流量表</span></div><small>发送：股票代码</small></article><article><div><strong>东方财富、天天基金公开数据</strong><span>ETF 搜索与定期披露持仓</span></div><small>发送：ETF 代码或名称</small></article><article><div><strong>可选大语言模型</strong><span>仅在服务器配置密钥时整理理由和有限检索资料；未配置时使用本地规则</span></div><small>可能发送：理由、资料标题、摘要、来源；关键金额仍由确定性代码计算</small></article></div></section></div><section className="privacy-boundaries"><div><ShieldCheck /><span><strong>产品边界</strong><small>不推荐必买或必卖，不预测保证收益，不自动交易。AI 或规则生成的文字只用于信息整理与风险复核，不构成投资建议。</small></span></div><div><TriangleAlert /><span><strong>不要输入</strong><small>证券账户密码、身份证号、银行卡号、短信验证码或任何可以授权交易的信息。</small></span></div><div><CircleHelp /><span><strong>语言版本</strong><small>当前真实用户测试只开放完整中文界面。English Beta 尚未开放，避免半译状态影响金融信息理解。</small></span></div></section><footer className="privacy-controls"><div><strong>管理全部个人数据</strong><span>清空会同时删除个人云端记录和本机备份；操作前可在“历史记录”和“我的持仓”分别导出。</span></div>{confirmClear ? <div className="privacy-clear-confirm"><span>此操作无法撤销。确认清空持仓、规则和决策记录？</span><Button variant="outline" onClick={() => setConfirmClear(false)}>取消</Button><Button onClick={onClear}>确认清空</Button></div> : <Button variant="outline" onClick={() => setConfirmClear(true)}>清空全部个人数据</Button>}</footer></section></main>;
 }
 
 function parseHoldingCsv(text: string): HoldingBook {
@@ -1221,21 +1261,13 @@ function HistoryView({ records, onStart, onResearch, onRecheck, onRestore }: { r
   const socialSourceCount = records.filter((record) => /朋友|小红书|群|网传|新闻|媒体/.test(record.reason ?? "")).length;
   const missingInvalidationCount = records.filter((record) => !(record.invalidation ?? "").trim()).length;
   const overPositionCount = records.filter((record) => record.issues?.some((issue) => issue.includes("仓位"))).length;
-  const horizonDays = (horizon?: string) => horizon === "1周" ? 7 : horizon === "3个月" ? 90 : 30;
-  const dueDateFor = (record: DecisionResult) => {
-    if (!record.reviewedAtIso) return undefined;
-    const due = new Date(record.reviewedAtIso);
-    if (Number.isNaN(due.getTime())) return undefined;
-    due.setDate(due.getDate() + horizonDays(record.horizon));
-    return due;
-  };
   const dueRecords = records.filter((record) => {
-    const due = dueDateFor(record);
+    const due = reviewDueDate(record);
     return due ? due.getTime() <= currentTime : false;
   });
-  const nextDue = records.map((record) => ({ record, due: dueDateFor(record) })).filter((item): item is { record: DecisionResult; due: Date } => Boolean(item.due)).sort((a, b) => a.due.getTime() - b.due.getTime())[0];
+  const nextDue = records.map((record) => ({ record, due: reviewDueDate(record) })).filter((item): item is { record: DecisionResult; due: Date } => Boolean(item.due)).sort((a, b) => a.due.getTime() - b.due.getTime())[0];
   const formatDue = (record: DecisionResult) => {
-    const due = dueDateFor(record);
+    const due = reviewDueDate(record);
     if (!due) return "旧记录未保存复核日期";
     const days = Math.ceil((due.getTime() - currentTime) / 86400000);
     if (days < 0) return `已到期 ${Math.abs(days)} 天`;
@@ -1281,7 +1313,7 @@ function HistoryView({ records, onStart, onResearch, onRecheck, onRestore }: { r
     <main className="workspace history-workspace view-enter" id="main-content">
       <section className="history-command"><div><span>需要重新核实</span><strong>{dueRecords.length}</strong><small>{dueRecords.length ? "已到你设定的观察期限" : nextDue ? `${nextDue.record.stock.name} · ${formatDue(nextDue.record)}` : "新记录将自动计算复核时间"}</small></div><div><span>已完成审查</span><strong>{totalReviews}</strong><small>{changedReviews} 次修改或延迟 · {changedRate}%</small></div><div><span>平均用时</span><strong>{durationLabel}</strong><small>{timedRecords.length ? `基于 ${timedRecords.length} 条记录` : "尚无完整耗时"}</small></div><div className="history-command-actions"><Button onClick={onStart}>新建审查</Button><Button variant="outline" onClick={exportBackup}><Download data-icon="inline-start" />完整备份</Button><label><Upload />恢复<input type="file" accept="application/json,.json" onChange={(event) => restoreBackup(event.target.files?.[0])} /></label></div></section>
       {restoreError && <div className="history-restore-error banner">{restoreError}</div>}
-      <section className="history-body history-review-layout"><div className="history-list"><SectionHeader title="复核时间线" meta="选择记录，查看当时依据" action={<Button variant="ghost" size="sm" onClick={exportCsv}>导出 CSV</Button>} /><div className="history-record-list">{records.map((record, index) => { const due = dueDateFor(record); return <button key={`${record.reviewedAtIso ?? record.reviewedAt}-${record.stock.code}-${index}`} className={selectedIndex === index ? "active" : ""} onClick={() => setSelectedIndex(index)}><span className="history-record-date">{record.reviewedAt ?? "旧记录"}</span><span className="history-record-main"><strong>{record.stock.name}</strong><em>{record.action} · 原计划 ¥{record.originalAmount.toLocaleString()}</em></span><span className="history-record-result"><Badge variant="outline">{record.result}</Badge><small className={due && due.getTime() <= currentTime ? "due" : ""}>{formatDue(record)}</small></span><ChevronRight /></button>; })}</div></div><article className="history-record-detail"><header><div><span>记录详情</span><h2>{selected.stock.name} · {selected.action}</h2><small>{selected.stock.code} · {selected.reviewedAt ?? "旧记录"}</small></div><div><Badge variant="outline">{selected.result}</Badge><Button variant="outline" size="sm" onClick={() => onResearch(selected.stock)}><Eye data-icon="inline-start" />查看当前资料</Button><Button size="sm" onClick={() => onRecheck(selected)}><CalendarClock data-icon="inline-start" />重新核实</Button></div></header><section className="history-decision-change"><div><span>原计划</span><strong>¥{selected.originalAmount.toLocaleString()}</strong><small>{selected.originalScenarioLoss ? `下跌 20% 情景 −¥${selected.originalScenarioLoss.toLocaleString()}` : "未保存情景计算"}</small></div><ArrowRight /><div><span>最终选择</span><strong>{selected.result === "已延迟" ? "稍后再看" : `¥${selected.finalAmount.toLocaleString()}`}</strong><small>{selected.scenarioLoss ? `下跌 20% 情景 −¥${selected.scenarioLoss.toLocaleString()}` : "未保存情景计算"}</small></div><div><span>复核时间</span><strong>{formatDue(selected)}</strong><small>观察期限 {selected.horizon ?? "未设置"}</small></div></section><section className="history-detail-columns"><div><span>当时为什么想操作</span><p>{selected.reason || "未记录理由"}</p><dl><div><dt>外部说法</dt><dd>{selected.reasonStructure?.external || "无"}</dd></div><div><dt>个人推断</dt><dd>{selected.reasonStructure?.inference || "未单独记录"}</dd></div><div><dt>失效条件</dt><dd>{selected.invalidation || "未填写"}</dd></div></dl></div><div><span>当时核实到了什么</span><strong>{selected.evidence?.assessment?.status ?? "未保存证据核实"}</strong><p>{selected.evidence?.assessment?.summary ?? "这条旧记录没有可复查的证据快照。重新核实时应读取当前公开资料。"}</p><small>{selected.evidence?.radar?.official_count ?? 0} 条正式披露 · {selected.evidence?.feed?.items?.length ?? 0} 条公开资料</small></div></section><section className="history-issue-strip"><div><span>原计划发现的问题</span><strong>{selected.issues?.join("；") || "没有记录到规则冲突"}</strong></div><div><span>完成后仍需注意</span><strong>{selected.remainingIssues?.join("；") || "无遗留必填项"}</strong></div></section></article></section>
+      <section className="history-body history-review-layout"><div className="history-list"><SectionHeader title="复核时间线" meta="选择记录，查看当时依据" action={<Button variant="ghost" size="sm" onClick={exportCsv}>导出 CSV</Button>} /><div className="history-record-list">{records.map((record, index) => { const due = reviewDueDate(record); return <button key={`${record.reviewedAtIso ?? record.reviewedAt}-${record.stock.code}-${index}`} className={selectedIndex === index ? "active" : ""} onClick={() => setSelectedIndex(index)}><span className="history-record-date">{record.reviewedAt ?? "旧记录"}</span><span className="history-record-main"><strong>{record.stock.name}</strong><em>{record.action} · 原计划 ¥{record.originalAmount.toLocaleString()}</em></span><span className="history-record-result"><Badge variant="outline">{record.result}</Badge><small className={due && due.getTime() <= currentTime ? "due" : ""}>{formatDue(record)}</small></span><ChevronRight /></button>; })}</div></div><article className="history-record-detail"><header><div><span>记录详情</span><h2>{selected.stock.name} · {selected.action}</h2><small>{selected.stock.code} · {selected.reviewedAt ?? "旧记录"}</small></div><div><Badge variant="outline">{selected.result}</Badge><Button variant="outline" size="sm" onClick={() => onResearch(selected.stock)}><Eye data-icon="inline-start" />查看当前资料</Button><Button size="sm" onClick={() => onRecheck(selected)}><CalendarClock data-icon="inline-start" />重新核实</Button></div></header><section className="history-decision-change"><div><span>原计划</span><strong>¥{selected.originalAmount.toLocaleString()}</strong><small>{selected.originalScenarioLoss ? `下跌 20% 情景 −¥${selected.originalScenarioLoss.toLocaleString()}` : "未保存情景计算"}</small></div><ArrowRight /><div><span>最终选择</span><strong>{selected.result === "已延迟" ? "稍后再看" : `¥${selected.finalAmount.toLocaleString()}`}</strong><small>{selected.scenarioLoss ? `下跌 20% 情景 −¥${selected.scenarioLoss.toLocaleString()}` : "未保存情景计算"}</small></div><div><span>复核时间</span><strong>{formatDue(selected)}</strong><small>观察期限 {selected.horizon ?? "未设置"}</small></div></section><section className="history-detail-columns"><div><span>当时为什么想操作</span><p>{selected.reason || "未记录理由"}</p><dl><div><dt>外部说法</dt><dd>{selected.reasonStructure?.external || "无"}</dd></div><div><dt>个人推断</dt><dd>{selected.reasonStructure?.inference || "未单独记录"}</dd></div><div><dt>失效条件</dt><dd>{selected.invalidation || "未填写"}</dd></div></dl></div><div><span>当时核实到了什么</span><strong>{selected.evidence?.assessment?.status ?? "未保存证据核实"}</strong><p>{selected.evidence?.assessment?.summary ?? "这条旧记录没有可复查的证据快照。重新核实时应读取当前公开资料。"}</p><small>{selected.evidence?.radar?.official_count ?? 0} 条正式披露 · {selected.evidence?.feed?.items?.length ?? 0} 条公开资料</small></div></section><section className="history-issue-strip"><div><span>原计划发现的问题</span><strong>{selected.issues?.join("；") || "没有记录到规则冲突"}</strong></div><div><span>完成后仍需注意</span><strong>{selected.remainingIssues?.join("；") || "无遗留必填项"}</strong></div></section></article></section>
       <section className="history-pattern-row"><div><span>记录中的重复情况</span><strong>{commonIssue?.[0] ?? "尚未形成重复模式"}</strong><small>{commonIssue ? `${commonIssue[1]} 次出现；仅描述记录，不判断心理状态。` : "积累更多真实记录后再统计。"}</small></div><div><b>{overPositionCount}</b><span>仓位边界冲突</span></div><div><b>{socialSourceCount}</b><span>理由提到外部消息</span></div><div><b>{missingInvalidationCount}</b><span>未写失效条件</span></div></section>
     </main>
   );
@@ -1299,55 +1331,92 @@ export default function Home({ authenticatedUser }: { authenticatedUser: string 
   const [researchDecisionContext, setResearchDecisionContext] = useState<ResearchDecisionContext>();
   const [rules, setRules] = useState<UserRules>(DEFAULT_RULES);
   const [holdings, setHoldings] = useState<HoldingBook>(DEFAULT_HOLDINGS);
+  const [watched, setWatched] = useState<WatchBook>({});
+  const [stateHydrated, setStateHydrated] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<CloudSyncStatus>("loading");
   useEffect(() => {
-    const loadSavedState = () => {
+    const applySnapshot = (snapshot: CloudSnapshot) => {
+      const completeRecords = Array.isArray(snapshot.decisionRecords) ? snapshot.decisionRecords.filter((record) => Boolean(record?.reviewedAt)).slice(0, 100) : [];
+      if (completeRecords.length) setDecisionRecords(completeRecords);
+      const latest = snapshot.latestDecision?.stock?.code ? snapshot.latestDecision : completeRecords[0];
+      if (latest) setLatestDecision(latest);
+      if (snapshot.rules?.investableCapital && snapshot.rules?.maxSingleStockRatio) setRules(snapshot.rules);
+      if (snapshot.holdings && typeof snapshot.holdings === "object") setHoldings(snapshot.holdings);
+      if (snapshot.watched && typeof snapshot.watched === "object") setWatched(snapshot.watched);
+    };
+    const readLocalSnapshot = (): CloudSnapshot => {
       try {
         const requestedView = new URLSearchParams(window.location.search).get("view");
         if (["desk", "research", "newDecision", "history", "portfolio", "rules", "privacy"].includes(requestedView ?? "")) setView(requestedView as View);
-        const saved = window.localStorage.getItem(LOCAL_DECISION_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved) as DecisionResult;
-          if (parsed?.stock?.code && parsed?.result) {
-            setLatestDecision(parsed);
-          }
-        }
-        const savedRecords = window.localStorage.getItem(LOCAL_DECISIONS_KEY);
-        if (savedRecords) {
-          const parsedRecords = JSON.parse(savedRecords) as DecisionResult[];
-          const completeRecords = Array.isArray(parsedRecords) ? parsedRecords.filter((record) => Boolean(record.reviewedAt)) : [];
-          if (completeRecords.length > 0) {
-            setDecisionRecords(completeRecords);
-            setLatestDecision(completeRecords[0]);
-          }
-        }
-        const savedRules = window.localStorage.getItem(LOCAL_RULES_KEY);
-        if (savedRules) {
-          const parsedRules = JSON.parse(savedRules) as UserRules;
-          if (parsedRules?.investableCapital > 0 && parsedRules?.maxSingleStockRatio > 0) setRules(parsedRules);
-        }
-        const savedHoldings = window.localStorage.getItem(LOCAL_HOLDINGS_KEY);
-        if (savedHoldings) {
-          const parsedHoldings = JSON.parse(savedHoldings) as HoldingBook;
-          if (parsedHoldings && typeof parsedHoldings === "object") setHoldings(parsedHoldings);
-        }
+        return {
+          latestDecision: JSON.parse(window.localStorage.getItem(LOCAL_DECISION_KEY) || "null") || undefined,
+          decisionRecords: JSON.parse(window.localStorage.getItem(LOCAL_DECISIONS_KEY) || "[]"),
+          rules: JSON.parse(window.localStorage.getItem(LOCAL_RULES_KEY) || "null") || undefined,
+          holdings: JSON.parse(window.localStorage.getItem(LOCAL_HOLDINGS_KEY) || "null") || undefined,
+          watched: JSON.parse(window.localStorage.getItem(LOCAL_WATCHED_KEY) || "null") || undefined,
+        };
       } catch {
         window.localStorage.removeItem(LOCAL_DECISION_KEY);
         window.localStorage.removeItem(LOCAL_DECISIONS_KEY);
         window.localStorage.removeItem(LOCAL_RULES_KEY);
         window.localStorage.removeItem(LOCAL_HOLDINGS_KEY);
+        window.localStorage.removeItem(LOCAL_WATCHED_KEY);
+        return {};
       }
     };
-    const frame = window.requestAnimationFrame(loadSavedState);
-    window.addEventListener("storage", loadSavedState);
-    return () => { window.cancelAnimationFrame(frame); window.removeEventListener("storage", loadSavedState); };
+    const controller = new AbortController();
+    const loadSavedState = async () => {
+      const local = readLocalSnapshot();
+      try {
+        const response = await fetch("/api/me/snapshot", { cache: "no-store", signal: controller.signal });
+        const payload = await response.json() as { status?: string; snapshot?: CloudSnapshot };
+        if (response.ok && payload.status === "ready" && payload.snapshot) {
+          applySnapshot(payload.snapshot);
+          setSyncStatus("synced");
+        } else {
+          applySnapshot(local);
+          setSyncStatus(response.ok ? "saving" : "local");
+        }
+      } catch {
+        if (!controller.signal.aborted) {
+          applySnapshot(local);
+          setSyncStatus("local");
+        }
+      } finally {
+        if (!controller.signal.aborted) setStateHydrated(true);
+      }
+    };
+    const onStorage = () => applySnapshot(readLocalSnapshot());
+    void loadSavedState();
+    window.addEventListener("storage", onStorage);
+    return () => { controller.abort(); window.removeEventListener("storage", onStorage); };
   }, []);
+  useEffect(() => {
+    if (!stateHydrated) return;
+    window.localStorage.setItem(LOCAL_DECISIONS_KEY, JSON.stringify(decisionRecords));
+    window.localStorage.setItem(LOCAL_RULES_KEY, JSON.stringify(rules));
+    window.localStorage.setItem(LOCAL_HOLDINGS_KEY, JSON.stringify(holdings));
+    window.localStorage.setItem(LOCAL_WATCHED_KEY, JSON.stringify(watched));
+    if (latestDecision) window.localStorage.setItem(LOCAL_DECISION_KEY, JSON.stringify(latestDecision));
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setSyncStatus("saving");
+      try {
+        const response = await fetch("/api/me/snapshot", { method: "PUT", signal: controller.signal, headers: { "content-type": "application/json" }, body: JSON.stringify({ rules, holdings, watched, decisionRecords, latestDecision }) });
+        setSyncStatus(response.ok ? "synced" : "local");
+      } catch {
+        if (!controller.signal.aborted) setSyncStatus("local");
+      }
+    }, 700);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [stateHydrated, rules, holdings, watched, decisionRecords, latestDecision]);
   const goDecision = (context?: ResearchDecisionContext) => { setResearchDecisionContext(context); setView("decision"); };
   const showNotice = (message: string) => { setNotice(message); window.setTimeout(() => setNotice(""), 3200); };
   const selectResearchStock = (target: Stock) => { setStock(target); setAction(holdingValueFor(holdings, target.code) > 0 ? "补仓" : "买入"); };
   const openResearch = (target?: Stock) => { if (target) selectResearchStock(target); setView("research"); };
   const startDecisionFor = (target: Stock) => { setResearchDecisionContext(undefined); selectResearchStock(target); setView("newDecision"); };
   const startNewDecision = () => { setResearchDecisionContext(undefined); const firstHolding = Object.entries(holdings).sort((a, b) => b[1].value - a[1].value)[0]; const target = firstHolding ? stocks.find((item) => item.code === firstHolding[0]) ?? { ...createCodeStock(firstHolding[0]), name: firstHolding[1].name } : stocks[0]; setStock(target); setAction(firstHolding ? "补仓" : "买入"); setView("newDecision"); };
-  const finishDecision = (result: DecisionResult) => { setLatestDecision(result); window.localStorage.setItem(LOCAL_DECISION_KEY, JSON.stringify(result)); setDecisionRecords((current) => { const next = [result, ...current].slice(0, 20); window.localStorage.setItem(LOCAL_DECISIONS_KEY, JSON.stringify(next)); return next; }); setView("decisionResult"); };
+  const finishDecision = (result: DecisionResult) => { setLatestDecision(result); setDecisionRecords((current) => [result, ...current].slice(0, 100)); setView("decisionResult"); };
   const saveTestFeedback = (feedback: TestFeedback) => { if (!latestDecision) return; const updated = { ...latestDecision, feedback }; setLatestDecision(updated); window.localStorage.setItem(LOCAL_DECISION_KEY, JSON.stringify(updated)); setDecisionRecords((current) => { const next = current.map((record) => record.reviewedAtIso === latestDecision.reviewedAtIso ? updated : record); window.localStorage.setItem(LOCAL_DECISIONS_KEY, JSON.stringify(next)); return next; }); showNotice("匿名测试反馈已保存"); };
   const restoreDecisionRecords = (restored: DecisionResult[]) => { setDecisionRecords(restored); setLatestDecision(restored[0]); window.localStorage.setItem(LOCAL_DECISIONS_KEY, JSON.stringify(restored)); if (restored[0]) window.localStorage.setItem(LOCAL_DECISION_KEY, JSON.stringify(restored[0])); showNotice(`已恢复 ${restored.length} 条决策记录`); };
   const recheckDecision = (record: DecisionResult) => { setResearchDecisionContext(record.reason ? { reason: record.reason, evidence: record.evidence } : undefined); setStock(record.stock); setAction(record.action); setView("decision"); };
@@ -1359,7 +1428,8 @@ export default function Home({ authenticatedUser }: { authenticatedUser: string 
     if (!held && (action === "补仓" || action === "卖出")) setAction("买入");
     window.localStorage.setItem(LOCAL_HOLDINGS_KEY, JSON.stringify(nextHoldings));
   };
-  const clearLocalData = () => { window.localStorage.removeItem(LOCAL_DECISION_KEY); window.localStorage.removeItem(LOCAL_DECISIONS_KEY); window.localStorage.removeItem(LOCAL_RULES_KEY); window.localStorage.removeItem(LOCAL_HOLDINGS_KEY); setLatestDecision(undefined); setDecisionRecords([]); setRules(DEFAULT_RULES); setHoldings(DEFAULT_HOLDINGS); showNotice("本设备中的持仓、规则和决策记录已清空"); setView("desk"); };
+  const saveWatch = (target: Stock, followed: boolean) => { setWatched((current) => { const next = { ...current }; if (followed) next[target.code] = { name: target.name }; else delete next[target.code]; return next; }); showNotice(followed ? `已关注 ${target.name}` : `已取消关注 ${target.name}`); };
+  const clearLocalData = async () => { setStateHydrated(false); try { await fetch("/api/me/snapshot", { method: "DELETE" }); } catch { /* Local deletion remains available offline. */ } window.localStorage.removeItem(LOCAL_DECISION_KEY); window.localStorage.removeItem(LOCAL_DECISIONS_KEY); window.localStorage.removeItem(LOCAL_RULES_KEY); window.localStorage.removeItem(LOCAL_HOLDINGS_KEY); window.localStorage.removeItem(LOCAL_WATCHED_KEY); setLatestDecision(undefined); setDecisionRecords([]); setRules(DEFAULT_RULES); setHoldings(DEFAULT_HOLDINGS); setWatched({}); setSyncStatus("synced"); showNotice("个人云端记录和本机备份已清空"); setView("desk"); window.setTimeout(() => setStateHydrated(true), 0); };
   const statusStockCode = view === "desk" ? Object.entries(holdings).sort((a, b) => b[1].value - a[1].value)[0]?.[0] || stock.code : stock.code;
   const syncFreshnessFromDrawer = useCallback((rows: SourceCheck[]) => {
     const quote = rows.find((row) => row.category === "行情");
@@ -1371,18 +1441,18 @@ export default function Home({ authenticatedUser }: { authenticatedUser: string 
       <a className="skip-link" href="#main-content">跳到主要内容</a>
       <AppRail view={view} onView={(nextView) => { if (nextView === "decision") { startNewDecision(); return; } if (nextView === "research") setAction(holdingValueFor(holdings, stock.code) > 0 ? "补仓" : "买入"); setView(nextView); }} hasPending={false} />
       <div className="app-body">
-        <AppHeader view={view} stockCode={statusStockCode} freshnessOverride={freshnessOverride} userName={authenticatedUser} onNewDecision={startNewDecision} onSelectStock={openResearch} onDataStatus={() => setShowDataStatus(true)} />
+        <AppHeader view={view} stockCode={statusStockCode} freshnessOverride={freshnessOverride} userName={authenticatedUser} syncStatus={syncStatus} onNewDecision={startNewDecision} onSelectStock={openResearch} onDataStatus={() => setShowDataStatus(true)} />
         {showDataStatus && <DataStatusDrawer stockCode={statusStockCode} open onClose={() => setShowDataStatus(false)} onStatus={syncFreshnessFromDrawer} />}
         {notice && <div className="toast-notice" role="status"><CheckCircle2 />{notice}<button onClick={() => setNotice("")} aria-label="关闭提示"><X /></button></div>}
-        {view === "desk" && <DeskView onDecision={startNewDecision} onResearch={openResearch} onHistory={() => setView("history")} onPortfolio={() => setView("portfolio")} latest={latestDecision} records={decisionRecords} holdings={holdings} rules={rules} />}
-        {view === "research" && <ResearchView stock={stock} setStock={selectResearchStock} action={action} setAction={setAction} onDecision={goDecision} holdings={holdings} capital={rules.investableCapital} records={decisionRecords} />}
+        {view === "desk" && <DeskView onDecision={startNewDecision} onResearch={openResearch} onHistory={() => setView("history")} onPortfolio={() => setView("portfolio")} latest={latestDecision} records={decisionRecords} holdings={holdings} watched={watched} rules={rules} />}
+        {view === "research" && <ResearchView stock={stock} setStock={selectResearchStock} action={action} setAction={setAction} onDecision={goDecision} holdings={holdings} watched={watched} onWatch={saveWatch} capital={rules.investableCapital} records={decisionRecords} />}
         {view === "newDecision" && <StartDecisionView stock={stock} onSelect={selectResearchStock} action={action} setAction={setAction} onResearch={() => setView("research")} onContinue={goDecision} holdings={holdings} capital={rules.investableCapital} />}
         {view === "decision" && <DecisionView stock={stock} action={action} rules={rules} holdings={holdings} priorDecision={decisionRecords.find((record) => record.stock.code === stock.code)} researchContext={researchDecisionContext} onEditRules={() => setView("rules")} onDone={finishDecision} onBack={() => setView("research")} />}
         {view === "decisionResult" && latestDecision && <DecisionResultView record={latestDecision} holdings={holdings} onDesk={() => setView("desk")} onHistory={() => setView("history")} onResearch={() => { setStock(latestDecision.stock); setView("research"); }} onFeedback={saveTestFeedback} />}
         {view === "history" && <HistoryView records={decisionRecords} onStart={startNewDecision} onResearch={openResearch} onRecheck={recheckDecision} onRestore={restoreDecisionRecords} />}
         {view === "portfolio" && <HoldingsView holdings={holdings} capital={rules.investableCapital} maxSingleStockValue={rules.maxSingleStockValue} maxSingleStockRatio={rules.maxSingleStockRatio} records={decisionRecords} onChange={saveHoldings} onNotice={showNotice} onResearch={openResearch} onReview={startDecisionFor} />}
         {view === "rules" && <RulesView rules={rules} onSave={saveRules} onBack={() => setView("desk")} />}
-        {view === "privacy" && <PrivacyView recordCount={decisionRecords.length} holdingCount={Object.keys(holdings).length} onClear={clearLocalData} onBack={() => setView("desk")} />}
+        {view === "privacy" && <PrivacyView recordCount={decisionRecords.length} holdingCount={Object.keys(holdings).length} syncStatus={syncStatus} onClear={() => { void clearLocalData(); }} onBack={() => setView("desk")} />}
       </div>
     </div>
   );

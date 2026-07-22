@@ -893,6 +893,8 @@ svg { stroke-width: 1.8; }
 .chart-grid span::after { content: ""; flex: 1; height: 1px; background: color-mix(in oklch, var(--border), transparent 15%); }
 .chart-wrap svg { position: absolute; inset: 8px 0 31px 42px; width: calc(100% - 42px); height: calc(100% - 39px); overflow: visible; }
 .chart-line { fill: none; stroke: var(--primary); stroke-width: 2.2; vector-effect: non-scaling-stroke; }
+.chart-benchmark-line { fill: none; stroke: var(--gold-strong); stroke-width: 1.5; stroke-dasharray: 7 5; opacity: .9; vector-effect: non-scaling-stroke; }
+.benchmark-line-key { width: 22px !important; height: 0 !important; border-top: 2px dashed var(--gold-strong); border-radius: 0 !important; background: transparent !important; }
 .chart-area { fill: url(#chartFill); stroke: none; }
 .event-line { stroke: var(--gold); stroke-dasharray: 4 5; vector-effect: non-scaling-stroke; }.event-dot { fill: var(--gold); stroke: white; stroke-width: 2; vector-effect: non-scaling-stroke; }
 .chart-event { position: absolute; top: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 5px; padding: 4px 7px; border: 1px solid color-mix(in oklch, var(--gold), white 48%); border-radius: 6px; background: var(--gold-soft); color: var(--gold-strong); font-size: 12px; }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readCached, storeCached } from "../../../lib/data-cache";
 
 const DEFAULT_ANXIN_API_URL = "http://127.0.0.1:8001";
 
@@ -200,20 +201,24 @@ export async function GET(
       { status: 400 },
     );
   }
+  const cacheKey = `evidence:${code}:${reason.toLowerCase()}`;
 
   const baseUrl = (process.env.ANXIN_API_URL || DEFAULT_ANXIN_API_URL).replace(/\/$/, "");
   const url = `${baseUrl}/stocks/${code}/evidence?limit=10&reason=${encodeURIComponent(reason)}`;
   try {
     if (!process.env.ANXIN_API_URL && process.env.NODE_ENV === "production") throw new Error("FastAPI not configured");
     const payload = await requestJson(url, 45_000);
+    storeCached(cacheKey, payload);
     return NextResponse.json(payload);
   } catch (error) {
     try {
-      return NextResponse.json(await cninfoAnnouncementEvidence(code, reason));
+      const payload = await cninfoAnnouncementEvidence(code, reason); storeCached(cacheKey, payload); return NextResponse.json(payload, { headers: { "cache-control": "public, max-age=300, stale-while-revalidate=3600" } });
     } catch {
       try {
-        return NextResponse.json(await publicAnnouncementEvidence(code, reason));
+        const payload = await publicAnnouncementEvidence(code, reason); storeCached(cacheKey, payload); return NextResponse.json(payload, { headers: { "cache-control": "public, max-age=300, stale-while-revalidate=3600" } });
       } catch {
+        const cached = readCached<Record<string, unknown>>(cacheKey, 24 * 60 * 60 * 1000);
+        if (cached) return NextResponse.json({ ...cached.value, feed: { ...((cached.value.feed as Record<string, unknown> | undefined) ?? {}), data_mode: "cached", cached_at: cached.cachedAt, message: "公开资料源暂不可用，当前显示最近一次成功检索结果。" } });
         return NextResponse.json(
           {
             status: "unavailable",
