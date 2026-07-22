@@ -165,6 +165,16 @@ test("keeps the fifth judge score tied to measured data evidence",()=>{
   assert.match(loop,/仍不宣称 95/);
 });
 
+test("keeps the 95-point claim behind external evidence gates",()=>{
+  const audit=read("MVP_95_COMPLETION_AUDIT.md");
+  assert.match(audit,/当前可辩护课程分为 \*\*92\/100\*\*/);
+  assert.match(audit,/0 位外部参与者/);
+  assert.match(audit,/真实模型评测未运行/);
+  assert.match(audit,/三类用户各 5 位/);
+  assert.match(audit,/至少 5 位用户主动加入/);
+  assert.match(audit,/不得用于抬分的材料/);
+});
+
 test("does not label the initial health check as a retrying failure",()=>{
   const status=read("app/components/system-reliability-center.tsx");
   assert.match(status,/status\?label\[status\]:"检查中"/);
