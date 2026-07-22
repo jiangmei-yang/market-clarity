@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readCached, storeCached } from "../../../lib/data-cache";
+import { freshness, reliabilityFromFreshness, reliability } from "../../../lib/failure-control";
 
 type EastmoneyIndex = {
   f2?: number;
@@ -46,22 +47,26 @@ export async function GET() {
       };
     }).filter(Boolean);
     if (items.length === 0) throw new Error("empty market response");
+    const dataTimestamp=items.map((item)=>(item as {updated_at?:string})?.updated_at).filter(Boolean).sort().at(-1)??new Date().toISOString();
+    const fresh=freshness("market_realtime",dataTimestamp,"东方财富公开行情");
     const result = {
-      status: items.length === INDEXES.length ? "live" : "partial",
+      status: items.length === INDEXES.length ? "healthy" : "degraded",
       source: "东方财富公开行情",
       fetched_at: new Date().toISOString(),
+      data_timestamp:dataTimestamp,updated_at:fresh.updated_at,max_age:fresh.max_age,freshness_status:fresh.freshness_status,fallback_source:fresh.fallback_source,reliability:reliabilityFromFreshness(fresh,{message:items.length===INDEXES.length?"指数行情在有效期内":"部分指数暂不可用"}),
       items,
     };
     storeCached(cacheKey, result);
     return NextResponse.json(result, { headers: { "cache-control": "public, max-age=20, stale-while-revalidate=180" } });
   } catch (error) {
     const cached = readCached<Record<string, unknown>>(cacheKey, 30 * 60 * 1000);
-    if (cached) return NextResponse.json({ ...cached.value, status: "cached", cached_at: cached.cachedAt, cache_age_seconds: cached.ageSeconds, message: "实时指数源暂不可用，当前显示最近一次成功读取的数据。" });
+    if (cached) return NextResponse.json({ ...cached.value, status: "stale", cached_at: cached.cachedAt, cache_age_seconds: cached.ageSeconds, message: "实时指数源暂不可用，当前显示最近一次成功读取的数据。",freshness_status:"stale",reliability:reliability({status:"stale",last_success_at:cached.cachedAt,data_timestamp:String(cached.value.data_timestamp??cached.cachedAt),error_code:"MARKET_SOURCE_FAILED",message:"缓存仅供参考，不生成新信号。",warnings:["东方财富公开行情当前不可用"],retryable:true,fallback_used:"内存缓存",allow_signal:false}) });
     return NextResponse.json({
       status: "unavailable",
       source: "东方财富公开行情",
       fetched_at: new Date().toISOString(),
       message: error instanceof Error && error.name === "AbortError" ? "指数行情请求超时" : "指数行情暂不可用",
+      reliability:reliability({status:"unavailable",error_code:"MARKET_OVERVIEW_UNAVAILABLE",message:"指数行情不可用",retryable:true,allow_signal:false}),
       items: [],
     }, { status: 503 });
   } finally {

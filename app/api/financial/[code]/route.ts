@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readCached, storeCached } from "../../../lib/data-cache";
+import { freshness, reliabilityFromFreshness, reliability } from "../../../lib/failure-control";
 
 const DEFAULT_ANXIN_API_URL = "http://127.0.0.1:8001";
 const SINA_FINANCE_URL = "https://quotes.sina.cn/cn/api/openapi.php/CompanyFinanceService.getFinanceReport2022";
@@ -107,12 +108,14 @@ async function publicFinancialHealth(code: string, signal: AbortSignal) {
         : check("debt", "财务压力", "steady", "资产负债率未触发预设关注线", `资产负债率 ${debtRatio.toFixed(1)}%`, "不同行业的合理负债水平不同，本工具不替代同行比较。"),
   ];
   const publicPeriods = periods.slice(-8).reverse().map((period) => ({ ...period, debt_ratio: period.total_assets && period.total_liabilities !== null ? period.total_liabilities / period.total_assets * 100 : null }));
+  const fresh=freshness("financial",latest.report_date,"新浪财经公开财务报表");
   return {
     code, name: code, report_date: latest.report_date,
     headline: { revenue: latest.revenue, revenue_yoy: revenueGrowth, net_profit: latest.net_profit, profit_yoy: profitGrowth, deducted_net_profit: latest.deducted_net_profit, deducted_profit_yoy: deductedProfitGrowth, roe: null, operating_cash_flow: latest.operating_cash_flow, cash_conversion: cashConversion, debt_ratio: debtRatio },
     checks, periods: publicPeriods,
     coverage: { known_checks: checks.filter((item) => item.state !== "unknown").length, total_checks: checks.length },
-    data_status: { source: "新浪财经公开财务报表", indicator_source: null, is_demo: false, updated_at: new Date().toISOString(), message: "三张公开报表按相同报告日合并；季度累计值不可直接与上一季度比较。" },
+    data_status: { source: "新浪财经公开财务报表", indicator_source: null, is_demo: false, updated_at: latest.report_date,max_age:fresh.max_age,freshness_status:fresh.freshness_status,fallback_source:fresh.fallback_source, message: "三张公开报表按相同报告日合并；季度累计值不可直接与上一季度比较。" },
+    reliability:reliabilityFromFreshness(fresh,{message:fresh.freshness_status==="fresh"?"财报处于当前业务有效期":"财报报告期已超过有效期，仅供历史参考"}),
     methodology: { comparison: "同比使用相同报告日；季度累计值不与上一季度直接比较", cash_rule: "经营现金流净额 ÷ 净利润金额；不会用现金流占收入百分比代替", disclaimer: "财报体检仅做数据勾稽和异常提示，不构成盈利预测或买卖建议。" },
   };
 }
@@ -130,13 +133,13 @@ export async function GET(_request: Request, context: { params: Promise<{ code: 
       try {
         const baseUrl = (process.env.ANXIN_API_URL || DEFAULT_ANXIN_API_URL).replace(/\/$/, "");
         const response = await fetch(`${baseUrl}/stocks/${code}/financial-health`, { cache: "no-store", signal: controller.signal, headers: { accept: "application/json" } });
-        if (response.ok) { const payload = await response.json(); storeCached(cacheKey, payload); return NextResponse.json(payload); }
+        if (response.ok) { const payload = await response.json() as Record<string,unknown>;const updatedAt=String((payload.data_status as {updated_at?:string}|undefined)?.updated_at??payload.report_date??"")||null;const fresh=freshness("financial",updatedAt,"安心看股财务服务");const enriched={...payload,reliability:reliabilityFromFreshness(fresh),updated_at:fresh.updated_at,max_age:fresh.max_age,freshness_status:fresh.freshness_status,source:fresh.source,fallback_source:fresh.fallback_source};storeCached(cacheKey, enriched); return NextResponse.json(enriched); }
       } catch { /* Continue to the public server-side fallback. */ }
     }
     const payload = await publicFinancialHealth(code, controller.signal); storeCached(cacheKey, payload); return NextResponse.json(payload, { headers: { "cache-control": "public, max-age=3600, stale-while-revalidate=86400" } });
   } catch (error) {
     const cached = readCached<Record<string, unknown>>(cacheKey, 7 * 24 * 60 * 60 * 1000);
-    if (cached) return NextResponse.json({ ...cached.value, data_status: { ...((cached.value.data_status as Record<string, unknown> | undefined) ?? {}), mode: "cached", cached_at: cached.cachedAt, message: "公开财报源暂不可用，当前显示最近一次成功读取的报表。" } });
-    return NextResponse.json({ message: error instanceof Error && error.name === "AbortError" ? "财报读取超时，请稍后重试" : `财报服务暂不可用；没有使用演示结果代替。${error instanceof Error ? ` ${error.message}` : ""}` }, { status: 503 });
+    if (cached) return NextResponse.json({ ...cached.value, data_status: { ...((cached.value.data_status as Record<string, unknown> | undefined) ?? {}), mode: "cached", cached_at: cached.cachedAt,freshness_status:"stale", message: "公开财报源暂不可用，当前显示最近一次成功读取的报表。" },reliability:reliability({status:"stale",last_success_at:cached.cachedAt,data_timestamp:String(cached.value.report_date??cached.cachedAt),error_code:"FINANCIAL_SOURCE_FAILED",message:"缓存财报仅供历史参考",warnings:["公开财报源暂不可用"],retryable:true,fallback_used:"内存缓存",allow_signal:false}) });
+    return NextResponse.json({ message: error instanceof Error && error.name === "AbortError" ? "财报读取超时，请稍后重试" : `财报服务暂不可用；没有使用演示结果代替。${error instanceof Error ? ` ${error.message}` : ""}`,reliability:reliability({status:"unavailable",error_code:"FINANCIAL_UNAVAILABLE",message:"财报数据不可用",retryable:true,allow_signal:false}) }, { status: 503 });
   } finally { clearTimeout(timeout); }
 }

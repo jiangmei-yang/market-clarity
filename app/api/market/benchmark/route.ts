@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readCached, storeCached } from "../../../lib/data-cache";
+import { freshness, reliabilityFromFreshness, reliability } from "../../../lib/failure-control";
 
 type Point = { date: string; close: number };
 
@@ -14,12 +15,13 @@ export async function GET() {
     const payload = await response.json() as { data?: { klines?: string[] } };
     const data: Point[] = (payload.data?.klines ?? []).map((row) => { const fields = row.split(","); return { date: fields[0], close: Number(fields[2]) }; }).filter((point) => point.date && Number.isFinite(point.close));
     if (data.length < 2) throw new Error("benchmark empty");
-    const result = { status: "live", code: "000300", name: "沪深300", source: "东方财富公开历史行情", fetched_at: new Date().toISOString(), data };
+    const dataTimestamp=data.at(-1)?.date??null;const fresh=freshness("market_daily",dataTimestamp,"东方财富公开历史行情");
+    const result = { status: "healthy", code: "000300", name: "沪深300", source: "东方财富公开历史行情", fetched_at: new Date().toISOString(),data_timestamp:dataTimestamp,updated_at:fresh.updated_at,max_age:fresh.max_age,freshness_status:fresh.freshness_status,fallback_source:fresh.fallback_source,reliability:reliabilityFromFreshness(fresh), data };
     storeCached(cacheKey, result);
     return NextResponse.json(result, { headers: { "cache-control": "public, max-age=300, stale-while-revalidate=3600" } });
   } catch {
     const cached = readCached<Record<string, unknown>>(cacheKey, 24 * 60 * 60 * 1000);
-    if (cached) return NextResponse.json({ ...cached.value, status: "cached", cached_at: cached.cachedAt, message: "基准行情源暂不可用，显示最近缓存。" });
-    return NextResponse.json({ status: "unavailable", message: "沪深300基准行情暂不可用", data: [] }, { status: 503 });
+    if (cached) return NextResponse.json({ ...cached.value, status: "stale", cached_at: cached.cachedAt, freshness_status:"stale",message: "基准行情源暂不可用，显示最近缓存。",reliability:reliability({status:"stale",last_success_at:cached.cachedAt,data_timestamp:String(cached.value.data_timestamp??cached.cachedAt),error_code:"BENCHMARK_SOURCE_FAILED",message:"缓存基准不用于生成新信号",retryable:true,fallback_used:"内存缓存",allow_signal:false}) });
+    return NextResponse.json({ status: "unavailable", message: "沪深300基准行情暂不可用",reliability:reliability({status:"unavailable",error_code:"BENCHMARK_UNAVAILABLE",message:"基准缺失，回测必须阻断",retryable:true,allow_signal:false}), data: [] }, { status: 503 });
   } finally { clearTimeout(timeout); }
 }

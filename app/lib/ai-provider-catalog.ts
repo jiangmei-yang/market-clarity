@@ -1,4 +1,5 @@
 import { authenticatedOwnerKey, getUserDatabase, readUserSnapshot, writeUserSnapshot, type UserSnapshot } from "./user-snapshot";
+import { ControlledFailure, classifyProviderResponse, reliability, withControlledRetry, type ReliabilityState } from "./failure-control";
 
 export type AIProviderType = "mock" | "compatible" | "openai" | "anthropic" | "ollama" | "vllm" | "llamacpp";
 export type AIAPIMode = "chat" | "responses" | "native";
@@ -308,11 +309,11 @@ export async function setAIPrivacyMode(enabled:boolean) {
   return {success:true,privacy_mode:enabled,default_provider_id:next.aiDefaultProviderId??"platform_default",message:enabled?"本地隐私模式已开启；不会调用外部模型":"本地隐私模式已关闭"};
 }
 
-function providerHttpError(status: number, stage = "连接") {
-  if (status === 401 || status === 403) return new Error("API Key 未被服务商接受，请确认 Key 是否有效、是否有模型权限。");
-  if (status === 404) return new Error("接口地址或调用模式不匹配；请使用服务商提供的 API Base URL（通常以 /v1 结尾）。");
-  if (status === 429) return new Error("服务商提示额度不足或请求过于频繁，请检查账户额度后重试。");
-  if (status >= 500) return new Error("模型服务当前不可用，请稍后重试；规则计算仍可继续使用。");
+function providerHttpError(response: Response|number, stage = "连接") {
+  // 401/403: API Key 未被服务商接受；429 配额不足时停止重试，Retry-After 明确时才延迟重试。
+  const status=typeof response==="number"?response:response.status;
+  const classified=classifyProviderResponse(status,typeof response==="number"?null:response.headers.get("retry-after"));
+  if ([401,403,404,429].includes(status)||status>=500) return classified;
   if (status === 400 || status === 422) return new Error(stage === "模型列表" ? "服务商不支持自动列出模型，请从其控制台复制完整模型 ID。" : "模型名称或调用模式未被服务商接受；可先自动获取模型，再重新测试。");
   return new Error(`${stage}失败（服务商返回 ${status}），请检查配置后重试。`);
 }
@@ -327,7 +328,7 @@ export async function discoverUnsavedProviderModels(input: AIProviderInput) {
     const headers:Record<string,string>={accept:"application/json"};
     if(providerType==="anthropic"){headers["x-api-key"]=apiKey;headers["anthropic-version"]="2023-06-01";} else headers.authorization=`Bearer ${apiKey}`;
     const response=await fetch(`${baseUrl.replace(/\/$/,"")}/models`,{method:"GET",redirect:"error",signal:controller.signal,headers});
-    if(!response.ok) throw providerHttpError(response.status,"模型列表");
+    if(!response.ok) throw providerHttpError(response,"模型列表");
     const payload=await response.json() as {data?:Array<{id?:string}>;models?:Array<{id?:string;name?:string}>};
     const models=[...(payload.data??[]).map((item)=>item.id),...(payload.models??[]).map((item)=>item.id??item.name)].filter((item):item is string=>Boolean(item)).slice(0,60);
     if(!models.length) throw new Error("服务商已响应，但没有返回可选模型；请从服务商控制台复制完整模型 ID。");
@@ -347,29 +348,37 @@ export async function chatWithProvider(provider: ServerAIProviderProfile, messag
     if (provider.providerType==="anthropic") {
       const system = messages.filter((item)=>item.role==="system").map((item)=>item.content).join("\n");
       const response = await fetch(`${provider.baseUrl.replace(/\/$/,"")}/messages`,{method:"POST",redirect:"error",signal:controller.signal,headers:{"content-type":"application/json","x-api-key":provider.apiKey,"anthropic-version":"2023-06-01"},body:JSON.stringify({model:provider.model,max_tokens:maxTokens,system,messages:messages.filter((item)=>item.role!=="system")})});
-      if (!response.ok) throw providerHttpError(response.status);
+      if (!response.ok) throw providerHttpError(response);
       const payload = await response.json() as {content?:Array<{type?:string;text?:string}>;usage?:{input_tokens?:number;output_tokens?:number};stop_reason?:string};
       const promptTokens=payload.usage?.input_tokens??0,completionTokens=payload.usage?.output_tokens??0;
       const result={content:payload.content?.find((item)=>item.type==="text")?.text?.trim()||"",provider:provider.providerId,model:provider.model,usage:{promptTokens,completionTokens,totalTokens:promptTokens+completionTokens},toolCalls:[] as unknown[],finishReason:payload.stop_reason??"stop",latencyMs:Date.now()-started};await recordModelAudit(provider,"completed",result.latencyMs);return result;
     }
     if (provider.apiMode==="responses") {
       const response = await fetch(`${provider.baseUrl.replace(/\/$/,"")}/responses`,{method:"POST",redirect:"error",signal:controller.signal,headers:{"content-type":"application/json",authorization:`Bearer ${provider.apiKey}`},body:JSON.stringify({model:provider.model,input:messages,max_output_tokens:maxTokens})});
-      if (!response.ok) throw providerHttpError(response.status);
+      if (!response.ok) throw providerHttpError(response);
       const payload = await response.json() as {output_text?:string;output?:Array<{content?:Array<{text?:string}>}>;usage?:{input_tokens?:number;output_tokens?:number;total_tokens?:number}};
       const promptTokens=payload.usage?.input_tokens??0,completionTokens=payload.usage?.output_tokens??0;
       const result={content:payload.output_text?.trim()||payload.output?.flatMap((item)=>item.content??[]).map((item)=>item.text??"").join("").trim()||"",provider:provider.providerId,model:provider.model,usage:{promptTokens,completionTokens,totalTokens:payload.usage?.total_tokens??promptTokens+completionTokens},toolCalls:[] as unknown[],finishReason:"stop",latencyMs:Date.now()-started};await recordModelAudit(provider,"completed",result.latencyMs);return result;
     }
     const headers:Record<string,string>={"content-type":"application/json"}; if(provider.apiKey) headers.authorization=`Bearer ${provider.apiKey}`;
     const response = await fetch(`${provider.baseUrl.replace(/\/$/,"")}/chat/completions`,{method:"POST",redirect:"error",signal:controller.signal,headers,body:JSON.stringify({model:provider.model,messages,temperature:0.2,max_tokens:maxTokens})});
-    if (!response.ok) throw providerHttpError(response.status);
+    if (!response.ok) throw providerHttpError(response);
     const payload = await response.json() as {choices?:Array<{message?:{content?:string;tool_calls?:unknown[]};finish_reason?:string}>;usage?:{prompt_tokens?:number;completion_tokens?:number;total_tokens?:number}};
     const choice=payload.choices?.[0]; const promptTokens=payload.usage?.prompt_tokens??0,completionTokens=payload.usage?.completion_tokens??0;
     const result={content:choice?.message?.content?.trim()||"",provider:provider.providerId,model:provider.model,usage:{promptTokens,completionTokens,totalTokens:payload.usage?.total_tokens??promptTokens+completionTokens},toolCalls:choice?.message?.tool_calls??[],finishReason:choice?.finish_reason??"stop",latencyMs:Date.now()-started};await recordModelAudit(provider,"completed",result.latencyMs);return result;
-  } catch(error){await recordModelAudit(provider,"failed",Date.now()-started);throw error;} finally { clearTimeout(timer); }
+  } catch(error){await recordModelAudit(provider,"failed",Date.now()-started);if(error instanceof DOMException&&error.name==="AbortError")throw new ControlledFailure("模型连接超时。",{code:"AI_TIMEOUT",retryable:true});throw error;} finally { clearTimeout(timer); }
 }
 
 export async function callAIProvider(provider: ServerAIProviderProfile, messages: Array<{role:"system"|"user"|"assistant";content:string}>, maxTokens=500) {
-  return (await chatWithProvider(provider,messages,maxTokens)).content;
+  return (await withControlledRetry(()=>chatWithProvider(provider,messages,maxTokens),{maxAttempts:2,baseDelayMs:300})).value.content;
+}
+
+export type AIFallbackResult={content:string;provider:string;model:string;attempted:string[];reliability:ReliabilityState};
+export async function callAIProviderWithFallback(providers:ServerAIProviderProfile[],messages:Array<{role:"system"|"user"|"assistant";content:string}>,maxTokens=500):Promise<AIFallbackResult>{
+  const candidates=providers.filter(item=>item.enabled&&item.connectionStatus==="available"&&item.providerId!=="mock");const attempted:string[]=[];let last:unknown;
+  for(const provider of candidates){attempted.push(provider.providerId);try{const content=await callAIProvider(provider,messages,maxTokens);if(!content)throw new ControlledFailure("模型返回空内容。",{code:"AI_EMPTY_RESPONSE"});return {content,provider:provider.displayName,model:provider.model,attempted,reliability:reliability({status:attempted.length>1?"degraded":"healthy",message:attempted.length>1?`已切换到备用模型 ${provider.displayName}`:`当前使用 ${provider.displayName}`,last_success_at:new Date().toISOString(),fallback_used:attempted.length>1?provider.displayName:null,allow_signal:false})};}catch(error){last=error;if(error instanceof ControlledFailure&&["AI_AUTH_INVALID","AI_QUOTA_OR_RATE_LIMIT"].includes(error.code))continue;}}
+  const controlled=last instanceof ControlledFailure?last:new ControlledFailure(last instanceof Error?last.message:"所有模型均不可用",{code:"AI_ALL_PROVIDERS_FAILED"});
+  throw controlled;
 }
 
 async function connectionResult(provider: ServerAIProviderProfile) {

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readCached, storeCached } from "../../../lib/data-cache";
+import { freshness, reliability, reliabilityFromFreshness } from "../../../lib/failure-control";
 
 const DEFAULT_DSA_URL = "http://127.0.0.1:8000";
 
@@ -16,7 +17,7 @@ type StockSearchPayload = { items?: Array<{ code?: string }>; is_demo?: boolean 
 type SourceStatus = {
   id: string;
   name: string;
-  status: "available" | "failed" | "not_configured" | "authorization_required";
+  status: "healthy" | "degraded" | "unavailable" | "blocked";
   detail: string;
 };
 
@@ -215,7 +216,7 @@ export async function GET(
 
   if (!result.quote && !result.history) {
     const cached = readCached<Record<string, unknown>>(cacheKey, 24 * 60 * 60 * 1000);
-    if (cached) return NextResponse.json({ ...cached.value, status: "cached", cachedAt: cached.cachedAt, cacheAgeSeconds: cached.ageSeconds, message: "实时行情源暂不可用，当前显示最近一次成功读取的数据。" });
+    if (cached) return NextResponse.json({ ...cached.value, status: "cached", cachedAt: cached.cachedAt, cacheAgeSeconds: cached.ageSeconds, message: "实时行情源暂不可用，当前显示最近一次成功读取的数据。", reliability:reliability({status:"stale",message:"当前显示缓存数据；禁止据此生成新信号。",last_success_at:cached.cachedAt,data_timestamp:(cached.value as {data_timestamp?:string}).data_timestamp??null,error_code:"LIVE_SOURCE_UNAVAILABLE",warnings:["在线行情源失败"],retryable:true,fallback_used:"最近成功缓存",allow_signal:false}) });
     if (rejectedByLocalStockList) {
       return NextResponse.json(
         { status: "invalid", message: `没有从已连接的数据源找到代码 ${code}，请检查代码后重试。` },
@@ -238,13 +239,17 @@ export async function GET(
     provider: (result.history as { source?: string } | undefined)?.source || (quoteResult.status === "fulfilled" ? "daily_stock_analysis · 公开行情" : "公开行情备用源"),
     fetchedAt: new Date().toISOString(),
     sources: [
-      { id: "daily_stock_analysis", name: "daily_stock_analysis", status: historyResult.status === "fulfilled" && Boolean(normalizeHistory(historyResult.value)) ? "available" : process.env.DAILY_STOCK_ANALYSIS_URL || useLocalDefaults ? "failed" : "not_configured", detail: process.env.DAILY_STOCK_ANALYSIS_URL || useLocalDefaults ? "自托管分析底座" : "未配置服务地址" },
-      { id: "ifind", name: "同花顺 iFinD", status: !ifindConfigured ? "authorization_required" : ifindHistoryResult.status === "fulfilled" && Boolean(normalizeIfindHistory(ifindHistoryResult.value)) ? "available" : "failed", detail: !ifindConfigured ? "需 iFinD 账号授权，Token 仅保存在服务器" : "官方 HTTP 数据接口" },
-      { id: "tencent", name: "腾讯证券公开行情", status: publicHistoryResult.status === "fulfilled" && Boolean(normalizeTencentHistory(publicHistoryResult.value, code)) ? "available" : "failed", detail: "公开日线备用源" },
-      { id: "eastmoney", name: "东方财富公开行情", status: eastmoneyHistoryResult.status === "fulfilled" && Boolean(normalizeEastmoneyHistory(eastmoneyHistoryResult.value)) ? "available" : "failed", detail: "公开日线备用源；非 Choice 商用数据授权" },
+      { id: "daily_stock_analysis", name: "daily_stock_analysis", status: historyResult.status === "fulfilled" && Boolean(normalizeHistory(historyResult.value)) ? "healthy" : "unavailable", detail: process.env.DAILY_STOCK_ANALYSIS_URL || useLocalDefaults ? "自托管分析底座" : "未配置服务地址" },
+      { id: "ifind", name: "同花顺 iFinD", status: !ifindConfigured ? "blocked" : ifindHistoryResult.status === "fulfilled" && Boolean(normalizeIfindHistory(ifindHistoryResult.value)) ? "healthy" : "unavailable", detail: !ifindConfigured ? "需 iFinD 账号授权，Token 仅保存在服务器" : "官方 HTTP 数据接口" },
+      { id: "tencent", name: "腾讯证券公开行情", status: publicHistoryResult.status === "fulfilled" && Boolean(normalizeTencentHistory(publicHistoryResult.value, code)) ? "healthy" : "unavailable", detail: "公开日线备用源" },
+      { id: "eastmoney", name: "东方财富公开行情", status: eastmoneyHistoryResult.status === "fulfilled" && Boolean(normalizeEastmoneyHistory(eastmoneyHistoryResult.value)) ? "healthy" : "unavailable", detail: "公开日线备用源；非 Choice 商用数据授权" },
     ] satisfies SourceStatus[],
     ...result,
   };
-  storeCached(cacheKey, payload);
-  return NextResponse.json(payload, { headers: { "cache-control": "public, max-age=30, stale-while-revalidate=300" } });
+  const lastPoint=(result.history as {data?:HistoryPoint[]}|undefined)?.data?.at(-1);const dataTimestamp=lastPoint?.date?new Date(`${lastPoint.date}T23:59:59+08:00`).toISOString():payload.fetchedAt;
+  const freshnessState=freshness("market_daily",dataTimestamp,payload.provider,historyCandidates.length>1?"备用行情源":null);
+  const reliabilityState=reliabilityFromFreshness(freshnessState,{message:payload.status==="live"?"行情服务正常。":"主数据服务不可用，当前使用已标明的公开备用源。"});
+  const finalPayload={...payload,data_timestamp:dataTimestamp,updated_at:payload.fetchedAt,max_age:freshnessState.max_age,freshness_status:freshnessState.freshness_status,source:payload.provider,fallback_source:freshnessState.fallback_source,reliability:payload.status==="live"?reliabilityState:reliability({...reliabilityState,status:reliabilityState.status==="stale"?"stale":"degraded",fallback_used:payload.provider,allow_signal:reliabilityState.allow_signal})};
+  storeCached(cacheKey, finalPayload);
+  return NextResponse.json(finalPayload, { headers: { "cache-control": "public, max-age=30, stale-while-revalidate=300" } });
 }

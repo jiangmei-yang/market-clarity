@@ -139,6 +139,20 @@ actions tied to the current ChatGPT user. Leave public content anonymous.
 - `npm test`: build the starter and verify its rendered loading skeleton
 - `npm run db:generate`: generate Drizzle migrations after schema changes
 
+## Failure Mode 与降级控制
+
+平台统一使用 `healthy / degraded / stale / unavailable / blocked / failed / cancelled / retrying`。每个受控任务返回最后成功时间、数据时间、错误码、警告、是否可重试、实际备用源、是否允许研究信号；`allow_trade` 永远为 `false`。
+
+- 行情、新闻、社媒、财报和用户数据分别采用业务有效期。超过有效期会明确标记为 `stale`，显示最后更新时间，并禁止生成新信号。
+- AI 超时和 5xx 最多重试一次；429 仅在服务商返回 `Retry-After` 时等待重试；鉴权、额度或模型配置错误不会盲目重试。备用 Provider 被使用时，界面显示实际 Provider 和模型。
+- Agent 保留已完成步骤，只允许单独重试失败的无副作用白名单工具。部分结果会列出缺失项，不会伪造成完整结论。
+- 回测在关键行情、基准、费用、复权、停牌处理、频率、参数或未来函数检查失败时返回空曲线和空指标，并阻断信号。
+- 定时任务连续失败三次自动暂停，保留上次成功记录但不生成新信号。当前 Sites 部署未配置后台调度器，因此保存的计划明确显示为不可自动执行。
+- 工作台 Patch 使用基础版本校验和新版本提交；应用失败会恢复原快照，原版本不会被覆盖。
+- 全局左下角“系统状态”入口显示当前模型、关键能力、降级原因和重新检查入口；具体数据模块同时显示来源、时间、缓存状态和信号权限。
+
+故障控制自动化覆盖在 `tests/failure-control.test.mjs`。本产品不连接券商；任何数据、模型、风控或任务状态异常都不会触发真实交易。
+
 ## Learn More
 
 - [vinext Documentation](https://github.com/cloudflare/vinext)

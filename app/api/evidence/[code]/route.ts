@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readCached, storeCached } from "../../../lib/data-cache";
+import { freshness, reliabilityFromFreshness, reliability } from "../../../lib/failure-control";
 
 const DEFAULT_ANXIN_API_URL = "http://127.0.0.1:8001";
 
@@ -18,6 +19,11 @@ type CninfoAnnouncement = {
 };
 
 const CLAIM_TERMS = ["订单", "回购", "减持", "增持", "业绩", "分红", "合同", "中标", "合作", "产能", "销量", "融资", "并购", "重组"];
+
+function withEvidenceReliability(payload:Record<string,unknown>,sourceName:string,fallbackSource:string|null=null){
+  const feed=(payload.feed as {updated_at?:string}|undefined);const fresh=freshness("news",feed?.updated_at??new Date().toISOString(),sourceName,fallbackSource);
+  return {...payload,updated_at:fresh.updated_at,max_age:fresh.max_age,freshness_status:fresh.freshness_status,source:fresh.source,fallback_source:fresh.fallback_source,reliability:reliabilityFromFreshness(fresh,{fallback:Boolean(fallbackSource),message:fallbackSource?`已从 ${fallbackSource} 降级到 ${sourceName}`:"公告检索结果在有效期内"})};
+}
 
 async function publicAnnouncementEvidence(code: string, reason: string) {
   const url = `https://np-anotice-stock.eastmoney.com/api/security/ann?sr=-1&page_size=10&page_index=1&ann_type=A&client_source=web&stock_list=${code}`;
@@ -207,23 +213,24 @@ export async function GET(
   const url = `${baseUrl}/stocks/${code}/evidence?limit=10&reason=${encodeURIComponent(reason)}`;
   try {
     if (!process.env.ANXIN_API_URL && process.env.NODE_ENV === "production") throw new Error("FastAPI not configured");
-    const payload = await requestJson(url, 45_000);
+    const payload = withEvidenceReliability(await requestJson(url, 45_000) as Record<string,unknown>,"安心看股资料服务");
     storeCached(cacheKey, payload);
     return NextResponse.json(payload);
   } catch (error) {
     try {
-      const payload = await cninfoAnnouncementEvidence(code, reason); storeCached(cacheKey, payload); return NextResponse.json(payload, { headers: { "cache-control": "public, max-age=300, stale-while-revalidate=3600" } });
+      const payload = withEvidenceReliability(await cninfoAnnouncementEvidence(code, reason),"巨潮资讯 · 法定披露平台","安心看股资料服务"); storeCached(cacheKey, payload); return NextResponse.json(payload, { headers: { "cache-control": "public, max-age=300, stale-while-revalidate=3600" } });
     } catch {
       try {
-        const payload = await publicAnnouncementEvidence(code, reason); storeCached(cacheKey, payload); return NextResponse.json(payload, { headers: { "cache-control": "public, max-age=300, stale-while-revalidate=3600" } });
+        const payload = withEvidenceReliability(await publicAnnouncementEvidence(code, reason),"东方财富公告聚合","巨潮资讯"); storeCached(cacheKey, payload); return NextResponse.json(payload, { headers: { "cache-control": "public, max-age=300, stale-while-revalidate=3600" } });
       } catch {
         const cached = readCached<Record<string, unknown>>(cacheKey, 24 * 60 * 60 * 1000);
-        if (cached) return NextResponse.json({ ...cached.value, feed: { ...((cached.value.feed as Record<string, unknown> | undefined) ?? {}), data_mode: "cached", cached_at: cached.cachedAt, message: "公开资料源暂不可用，当前显示最近一次成功检索结果。" } });
+        if (cached) return NextResponse.json({ ...cached.value, freshness_status:"stale",feed: { ...((cached.value.feed as Record<string, unknown> | undefined) ?? {}), data_mode: "cached", cached_at: cached.cachedAt, message: "公开资料源暂不可用，当前显示最近一次成功检索结果。" },reliability:reliability({status:"stale",last_success_at:cached.cachedAt,data_timestamp:String(cached.value.updated_at??cached.cachedAt),error_code:"EVIDENCE_SOURCE_FAILED",message:"缓存资料不能支持新的实时结论",retryable:true,fallback_used:"内存缓存",allow_signal:false}) });
         return NextResponse.json(
           {
             status: "unavailable",
             message: "公开资料检索暂时不可用。你的原始理由已保留，请稍后重试。",
             diagnostics: error instanceof Error ? error.message : "evidence unavailable",
+            reliability:reliability({status:"unavailable",error_code:"EVIDENCE_UNAVAILABLE",message:"公开资料检索不可用",retryable:true,allow_signal:false}),
           },
           { status: 503 },
         );
