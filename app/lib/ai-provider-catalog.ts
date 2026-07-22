@@ -242,23 +242,53 @@ export async function setUserDefaultProvider(providerId: string) {
   return { success:true,provider_id:providerId,model:target.model,message:"默认模型已切换" };
 }
 
+function providerHttpError(status: number, stage = "连接") {
+  if (status === 401 || status === 403) return new Error("API Key 未被服务商接受，请确认 Key 是否有效、是否有模型权限。");
+  if (status === 404) return new Error("接口地址或调用模式不匹配；请使用服务商提供的 API Base URL（通常以 /v1 结尾）。");
+  if (status === 429) return new Error("服务商提示额度不足或请求过于频繁，请检查账户额度后重试。");
+  if (status >= 500) return new Error("模型服务当前不可用，请稍后重试；规则计算仍可继续使用。");
+  if (status === 400 || status === 422) return new Error(stage === "模型列表" ? "服务商不支持自动列出模型，请从其控制台复制完整模型 ID。" : "模型名称或调用模式未被服务商接受；可先自动获取模型，再重新测试。");
+  return new Error(`${stage}失败（服务商返回 ${status}），请检查配置后重试。`);
+}
+
+export async function discoverUnsavedProviderModels(input: AIProviderInput) {
+  const providerType = input.providerType ?? "compatible";
+  if (!["compatible","openai","anthropic"].includes(providerType)) throw new Error("当前提供商不支持自动获取模型");
+  const baseUrl = safeEndpoint(bounded(input.baseUrl,500),providerType);
+  const apiKey = bounded(input.apiKey,600); if(!apiKey) throw new Error("请先填写 API Key，再自动获取模型");
+  const controller=new AbortController(); const timer=setTimeout(()=>controller.abort(),12_000);
+  try {
+    const headers:Record<string,string>={accept:"application/json"};
+    if(providerType==="anthropic"){headers["x-api-key"]=apiKey;headers["anthropic-version"]="2023-06-01";} else headers.authorization=`Bearer ${apiKey}`;
+    const response=await fetch(`${baseUrl.replace(/\/$/,"")}/models`,{method:"GET",redirect:"error",signal:controller.signal,headers});
+    if(!response.ok) throw providerHttpError(response.status,"模型列表");
+    const payload=await response.json() as {data?:Array<{id?:string}>;models?:Array<{id?:string;name?:string}>};
+    const models=[...(payload.data??[]).map((item)=>item.id),...(payload.models??[]).map((item)=>item.id??item.name)].filter((item):item is string=>Boolean(item)).slice(0,60);
+    if(!models.length) throw new Error("服务商已响应，但没有返回可选模型；请从服务商控制台复制完整模型 ID。");
+    return {success:true,models,message:`已取得 ${models.length} 个可用模型`};
+  } catch(error) {
+    if(error instanceof DOMException&&error.name==="AbortError") throw new Error("获取模型列表超时，请检查网络或 Base URL。");
+    throw error;
+  } finally {clearTimeout(timer);}
+}
+
 export async function callAIProvider(provider: ServerAIProviderProfile, messages: Array<{role:"system"|"user"|"assistant";content:string}>, maxTokens=500) {
   const controller = new AbortController(); const timer = setTimeout(()=>controller.abort(),20_000);
   try {
     if (provider.providerType==="anthropic") {
       const system = messages.filter((item)=>item.role==="system").map((item)=>item.content).join("\n");
       const response = await fetch(`${provider.baseUrl.replace(/\/$/,"")}/messages`,{method:"POST",redirect:"error",signal:controller.signal,headers:{"content-type":"application/json","x-api-key":provider.apiKey,"anthropic-version":"2023-06-01"},body:JSON.stringify({model:provider.model,max_tokens:maxTokens,system,messages:messages.filter((item)=>item.role!=="system")})});
-      if (!response.ok) throw new Error("模型连接失败");
+      if (!response.ok) throw providerHttpError(response.status);
       const payload = await response.json() as {content?:Array<{type?:string;text?:string}>}; return payload.content?.find((item)=>item.type==="text")?.text?.trim()||"";
     }
     if (provider.apiMode==="responses") {
       const response = await fetch(`${provider.baseUrl.replace(/\/$/,"")}/responses`,{method:"POST",redirect:"error",signal:controller.signal,headers:{"content-type":"application/json",authorization:`Bearer ${provider.apiKey}`},body:JSON.stringify({model:provider.model,input:messages,max_output_tokens:maxTokens})});
-      if (!response.ok) throw new Error("模型连接失败");
+      if (!response.ok) throw providerHttpError(response.status);
       const payload = await response.json() as {output_text?:string;output?:Array<{content?:Array<{text?:string}>}>}; return payload.output_text?.trim()||payload.output?.flatMap((item)=>item.content??[]).map((item)=>item.text??"").join("").trim()||"";
     }
     const headers:Record<string,string>={"content-type":"application/json"}; if(provider.apiKey) headers.authorization=`Bearer ${provider.apiKey}`;
     const response = await fetch(`${provider.baseUrl.replace(/\/$/,"")}/chat/completions`,{method:"POST",redirect:"error",signal:controller.signal,headers,body:JSON.stringify({model:provider.model,messages,temperature:0.2,max_tokens:maxTokens})});
-    if (!response.ok) throw new Error("模型连接失败");
+    if (!response.ok) throw providerHttpError(response.status);
     const payload = await response.json() as {choices?:Array<{message?:{content?:string}}>}; return payload.choices?.[0]?.message?.content?.trim()||"";
   } finally { clearTimeout(timer); }
 }
@@ -266,7 +296,7 @@ export async function callAIProvider(provider: ServerAIProviderProfile, messages
 async function connectionResult(provider: ServerAIProviderProfile) {
   const started=Date.now();
   try { const output=await callAIProvider(provider,[{role:"user",content:"请只回复：连接成功"}],20); if(!output) throw new Error("empty"); return {success:true,provider_id:provider.providerId,model:provider.model,latency_ms:Date.now()-started,message:"连接成功"}; }
-  catch { return {success:false,provider_id:provider.providerId,model:provider.model,latency_ms:Date.now()-started,message:"连接失败，请检查 API Key、Base URL、模型名称、调用模式和网络连接。",fallback_available:true}; }
+  catch(error) { return {success:false,provider_id:provider.providerId,model:provider.model,latency_ms:Date.now()-started,message:error instanceof Error?error.message:"连接失败，请检查配置。",fallback_available:true}; }
 }
 
 export async function testProviderConnection(providerId: string) {

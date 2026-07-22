@@ -83,10 +83,11 @@ test("server-renders privacy-preserving AI model settings", async () => {
 });
 
 test("keeps AI keys server-only and applies per-user provider priority", async () => {
-  const [catalog, snapshot, settings] = await Promise.all([
+  const [catalog, snapshot, settings, discoveryRoute] = await Promise.all([
     readFile(new URL("../app/lib/ai-provider-catalog.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/lib/user-snapshot.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/components/personal-workbench.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/ai/providers/discover/route.ts", import.meta.url), "utf8"),
   ]);
   assert.match(catalog, /providerId:"hkgai_main"/);
   assert.match(catalog, /snapshot\.aiDefaultProviderId/);
@@ -99,7 +100,24 @@ test("keeps AI keys server-only and applies per-user provider priority", async (
   assert.match(settings, /保存并设为默认/);
   assert.match(settings, /Base URL/);
   assert.match(settings, /type=\{showKey\?"text":"password"\}/);
+  assert.match(settings, /自动获取模型/);
+  assert.match(settings, /deepseek-chat/);
+  assert.match(catalog, /discoverUnsavedProviderModels/);
+  assert.match(catalog, /API Key 未被服务商接受/);
+  assert.match(catalog, /模型名称或调用模式未被服务商接受/);
+  assert.match(discoveryRoute, /discoverUnsavedProviderModels/);
   assert.doesNotMatch(settings, /(?:localStorage|sessionStorage)\.setItem\([^\n]*apiKey/i);
+});
+
+test("returns a specific setup error before model discovery sends a request", async () => {
+  const response = await render("/api/ai/providers/discover", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ providerType: "compatible", baseUrl: "https://example.com/v1", apiKey: "" }),
+  });
+  assert.equal(response.status, 422);
+  const body = await response.json();
+  assert.match(body.message, /请先填写 API Key/);
 });
 
 test("routes assistant questions through deterministic tools before a real model", async () => {

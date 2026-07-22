@@ -1940,6 +1940,12 @@ svg { stroke-width: 1.8; }
 }
 
 .opportunity-submit-row { display: flex; justify-content: flex-end; gap: 8px; }
+.ai-model-discovery { margin-top: 10px; padding: 12px 14px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px 16px; border: 1px solid color-mix(in oklch, var(--primary), white 66%); border-radius: 10px; background: var(--secondary); }
+.ai-model-discovery strong { font-size: 13px; }
+.ai-model-discovery p { margin: 3px 0 0; color: var(--muted-foreground); font-size: 12px; line-height: 1.5; }
+.ai-model-discovery label { grid-column: 1 / -1; display: grid; grid-template-columns: 90px minmax(0, 1fr); align-items: center; gap: 10px; }
+.ai-model-discovery label span { color: var(--muted-foreground); font-size: 12px; font-weight: 650; }
+.ai-model-discovery select { height: 36px; padding: 0 10px; border: 1px solid var(--input); border-radius: 8px; background: var(--card); color: var(--foreground); font: inherit; font-size: 12px; }
 
 /* One desktop frame across the workbench, research desk, and analysis tools. */
 @media (min-width: 901px) {
