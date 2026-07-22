@@ -405,7 +405,7 @@ test("keeps the daily workflow and decision loop in the product source", async (
   assert.match(page, /quantVerification/);
   assert.match(page, /最大允许历史回撤/);
   assert.match(page, /输入你想核实的说法、新闻或财务问题/);
-  assert.match(page, /encodeURIComponent\(submittedQuery\)/);
+  assert.match(page, /encodeURIComponent\(evidenceReason\)/);
   assert.match(page, /证据链/);
   assert.match(page, /下跌情景金额影响/);
   assert.match(page, /判断失效条件/);

@@ -805,7 +805,7 @@ function QuantVerificationPanel({ stock, saved, onSave, onDecision }: { stock: S
 }
 
 function ResearchView({ stock, setStock, action, setAction, onDecision, holdings, watched, onWatch, capital, records, quantVerifications, onSaveQuant }: { stock: Stock; setStock: (stock: Stock) => void; action: TradeAction; setAction: (action: TradeAction) => void; onDecision: (context?: ResearchDecisionContext) => void; holdings: HoldingBook; watched: WatchBook; onWatch: (stock: Stock, followed: boolean) => void; capital: number; records: DecisionResult[]; quantVerifications: SavedQuantVerification[]; onSaveQuant: (verification: SavedQuantVerification) => void }) {
-  const [panel, setPanel] = useState<"概览" | "财报体检" | "价格与事件" | "证据链" | "定量核实" | "待验证问题">("价格与事件");
+  const [panel, setPanel] = useState<"概览" | "财报体检" | "价格与事件" | "证据链" | "定量核实" | "待验证问题">("概览");
   const [researchQuery, setResearchQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const followedStocks = useMemo(() => Object.fromEntries(Object.keys(watched).map((code) => [code, true])), [watched]);
@@ -820,7 +820,7 @@ function ResearchView({ stock, setStock, action, setAction, onDecision, holdings
     const frame = window.requestAnimationFrame(() => {
       setResearchQuery(savedQuestion);
       setSubmittedQuery(savedQuestion);
-      setPanel("价格与事件");
+      setPanel("概览");
     });
     return () => window.cancelAnimationFrame(frame);
   }, [stock.code, recordedJudgment?.reason]);
@@ -841,8 +841,9 @@ function ResearchView({ stock, setStock, action, setAction, onDecision, holdings
     const controller = new AbortController();
     const requestedCode = stock.code;
     const requestedQuery = submittedQuery;
+    const evidenceReason = submittedQuery.trim() || "检查近期正式披露";
     const timer = window.setTimeout(() => setResearchEvidence({ requestedCode, requestedQuery, status: "loading" }), 0);
-    fetch(`/api/evidence/${stock.code}?reason=${encodeURIComponent(submittedQuery)}`, { signal: controller.signal, cache: "no-store" })
+    fetch(`/api/evidence/${stock.code}?reason=${encodeURIComponent(evidenceReason)}`, { signal: controller.signal, cache: "no-store" })
       .then(async (response) => {
         const payload = await response.json() as LiveEvidencePayload;
         setResearchEvidence({ requestedCode, requestedQuery, status: response.ok ? "ready" : "fallback", payload: response.ok ? payload : undefined });

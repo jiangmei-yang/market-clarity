@@ -28,7 +28,7 @@ import { DashboardEditor } from "./dashboard-editor";
 type Surface = "home" | "profile" | "opportunity" | "workspace" | "portfolio" | "ai-settings";
 type Holding = { name: string; value: number; industry?: string };
 type Snapshot = {
-  rules?: unknown; holdings?: Record<string, Holding>; decisionRecords?: Array<{ stock?: { name?: string }; result?: string; reviewedAt?: string }>;
+  rules?: unknown; holdings?: Record<string, Holding>; decisionRecords?: Array<{ stock?: { name?: string }; result?: string; reviewedAt?: string; durationSeconds?: number; feedback?: { satisfaction?: number; riskUnderstood?: boolean; repeatIntent?: boolean; paidIntent?: boolean } }>;
   investorProfile?: InvestorProfile; investmentRules?: InvestmentRule[]; workspaces?: Workspace[]; activeWorkspaceId?: string;
   opportunityChecks?: Array<{ checkedAt: string; text: string; level: string; score: number }>;
   workspaceVersions?: Array<{ configId: string; workspace: Workspace; createdAt: string }>;
@@ -148,7 +148,9 @@ function HomeSurface({ snapshot, profile, workspace, aiProviders }: { snapshot: 
 
     {!profile && <Alert className="personal-alert"><CircleAlert /><AlertTitle>尚未确认个人规则</AlertTitle><AlertDescription>系统现在只能使用标准提醒边界。先确认规则，交易前检查才会真正与你有关。 <Link href="/profile">现在设置</Link></AlertDescription></Alert>}
 
-    {aiProviders.some((item)=>item.isDefault && item.providerId !== "mock" && item.connectionStatus === "available") && <AIModelHomeCard providers={aiProviders}/>} 
+    <AIModelHomeCard providers={aiProviders}/>
+
+    {Boolean(snapshot.decisionRecords?.length) && <DecisionEvidenceMini records={snapshot.decisionRecords ?? []}/>} 
 
     <section className="personal-module-grid" aria-label="工作台模块">
       {visible.filter((module) => {
@@ -171,6 +173,20 @@ function HomeSurface({ snapshot, profile, workspace, aiProviders }: { snapshot: 
       </article>}
     </section>
   </div>;
+}
+
+function DecisionEvidenceMini({ records }: { records: NonNullable<Snapshot["decisionRecords"]> }) {
+  const completed = records.length;
+  const reconsidered = records.filter((item) => item.result === "已修改" || item.result === "已延迟").length;
+  const feedback = records.map((item) => item.feedback).filter(Boolean);
+  const understood = feedback.filter((item) => item?.riskUnderstood).length;
+  const timed = records.filter((item) => Number(item.durationSeconds) > 0);
+  const averageSeconds = timed.length ? Math.round(timed.reduce((sum, item) => sum + Number(item.durationSeconds), 0) / timed.length) : 0;
+  return <section className="home-decision-evidence" aria-label="我的决策审查记录">
+    <header><div><span>我的使用记录</span><strong>审查是否真的改变了决定</strong></div><Link href="/analysis?view=history">查看记录<ArrowRight/></Link></header>
+    <div><article><span>完成审查</span><b>{completed}</b><small>仅统计已保存记录</small></article><article><span>修改或延迟</span><b>{reconsidered}</b><small>{completed ? `${Math.round(reconsidered / completed * 100)}% 的已审查计划` : "暂无样本"}</small></article><article><span>明确理解风险</span><b>{understood}/{feedback.length}</b><small>来自匿名反馈；未填写不计入</small></article><article><span>平均完成时间</span><b>{averageSeconds ? `${averageSeconds} 秒` : "待记录"}</b><small>目标：60 秒内完成</small></article></div>
+    <p>这里只显示当前账户的真实记录，不代表所有用户；课程验证仍需汇总匿名测试者样本。</p>
+  </section>;
 }
 
 function AIModelHomeCard({providers}:{providers:AIProviderProfile[]}) {
@@ -205,7 +221,7 @@ function SectorExposureMini({ total, holdings }: { total: number; holdings: Reco
 
 function LearningMini({ level }: { level: Workspace["explanationLevel"] }) { return <div className="personal-learning"><BookOpenText /><div><strong>集中度不是“股票好不好”</strong><p>{level === "beginner" ? "钱放得太集中，一只股票或一个行业的变化就会明显影响整个组合。" : level === "professional" ? "集中度衡量组合对单一资产或共同风险因子的依赖，应结合权重、相关性与边际风险贡献核对。" : "它描述组合结果对一个标的或行业有多依赖，即使单项合理，整体仍可能集中。"}</p><span>下次检查：最大持仓是否超过自己的上限？</span></div></div>; }
 function WorkspaceSummaryMini({ workspace }: { workspace: Workspace }) { return <div className="personal-learning"><Sparkles /><div><strong>{workspace.name} · 当前阅读方式</strong><p>{workspace.explanationLevel === "beginner" ? "先看一句话结论和风险数字，复杂口径按需展开。" : workspace.explanationLevel === "professional" ? "优先保留原始数据、计算口径和可复核来源。" : "先看事实与组合影响，再展开依据和指标。"}</p><span>{workspace.preferredSectors?.length ? `重点行业：${workspace.preferredSectors.join("、")}` : "尚未设置重点行业"}</span></div></div>; }
-function ReviewMini({ records }: { records: Array<{ stock?: { name?: string }; result?: string; reviewedAt?: string }> }) { const latest = records[0]; return latest ? <div className="personal-review-mini"><span>最近一次</span><strong>{latest.stock?.name ?? "交易计划"}</strong><p>{latest.result ?? "已完成审查"} · {latest.reviewedAt ?? "时间未记录"}</p></div> : <ModuleEmpty title="还没有完成交易前审查" detail="先写理由、期限和失效条件，再看计划后的仓位数字。" action="开始第一次审查" href="/analysis?view=newDecision" />; }
+function ReviewMini({ records }: { records: NonNullable<Snapshot["decisionRecords"]> }) { const latest = records[0]; return latest ? <div className="personal-review-mini"><span>最近一次</span><strong>{latest.stock?.name ?? "交易计划"}</strong><p>{latest.result ?? "已完成审查"} · {latest.reviewedAt ?? "时间未记录"}</p></div> : <ModuleEmpty title="还没有完成交易前审查" detail="先写理由、期限和失效条件，再看计划后的仓位数字。" action="开始第一次审查" href="/analysis?view=newDecision" />; }
 function ModuleEmpty({ title, detail, action, href }: { title: string; detail: string; action: string; href: string }) { return <div className="personal-empty"><strong>{title}</strong><p>{detail}</p><Link href={href}>{action}<ArrowRight /></Link></div>; }
 function moduleHref(type: string) { if (type.startsWith("quant_")) return "/quant"; if (["social_risk", "opportunity_check"].includes(type)) return "/opportunity"; if (["portfolio_overview", "portfolio_risk", "etf_overlap", "sector_exposure", "rule_deviation"].includes(type)) return "/portfolio"; if (type === "trade_review") return "/trade-tool"; return "/analysis?view=research"; }
 
