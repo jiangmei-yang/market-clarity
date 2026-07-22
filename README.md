@@ -206,6 +206,15 @@ actions tied to the current ChatGPT user. Leave public content anonymous.
 
 相关接口包括 `/quant/engines`、`/quant/engines/{engine_id}`、`/quant/strategy/compile`、`/quant/strategy/switch-engine`、`/quant/strategy/compare`、`/quant/runs/{run_id}`、`/quant/runs/{run_id}/logs`、`/quant/licenses` 和 `/quant/licenses/check`。所有编译结果使用统一非交易 DSL，`allow_live_order` 固定为 `false`；切换引擎先预览，未安装或许可证未审核的适配器不能应用到生产任务。
 
+## 自动能力同步与增量 RAG
+
+- 开发和生产构建都会扫描页面与 API 路由，生成能力清单；新增页面或接口不需要再手工修改系统提示词。
+- 工具、工作台模块、数据源、策略、工作流、模板、量化引擎和 AI Provider 直接从各自 Registry 生成标准能力文档。
+- AI 检索前比较 Registry 版本与已保存索引，只更新新增、变化或删除的能力，并记录 created、updated、enabled、disabled 和 deleted 等事件。
+- 平台公共能力保存在全局能力索引；工作台、策略、持仓、提醒和偏好保存在按登录用户隔离的个人上下文索引。
+- 检索结果同时包含服务状态、当前 Provider、当前工作台和用户权限；不可用或已禁用能力不会被描述为可用。
+- 管理接口：`GET /capabilities/index/status`、`POST /capabilities/index/rebuild`、`POST /capabilities/index/reindex/{capability_id}`、`GET /capabilities/index/failures`、`POST /capabilities/index/failures/retry`。
+
 ## Learn More
 
 - [vinext Documentation](https://github.com/cloudflare/vinext)

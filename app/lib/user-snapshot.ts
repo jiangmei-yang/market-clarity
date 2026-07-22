@@ -89,6 +89,12 @@ export async function writeUserSnapshot(snapshot: UserSnapshot) {
     VALUES (?, ?, ?)
     ON CONFLICT(owner_key) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at`)
     .bind(owner, payload, updatedAt).run();
+  try {
+    const { syncUserContextIndex } = await import("./capability-index-server");
+    await syncUserContextIndex();
+  } catch {
+    // Personal writes remain authoritative; index health reports any later sync failure.
+  }
   return { status: "saved" as const, updatedAt };
 }
 

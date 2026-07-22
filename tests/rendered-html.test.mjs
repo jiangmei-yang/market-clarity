@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+const workerPromise = import(new URL("../dist/server/index.js", import.meta.url).href);
+
 async function render(path = "/", init = {}) {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
+  const { default: worker } = await workerPromise;
 
   return worker.fetch(
     new Request(`http://localhost${path}`, { headers: { accept: "text/html", "oai-authenticated-user-email": "tester@example.com", ...(init.headers ?? {}) }, ...init }),

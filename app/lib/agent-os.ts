@@ -6,7 +6,7 @@ import { cancelAssistantCommand, createAssistantPreview, confirmAssistantCommand
 import { diagnosePublicEtfs } from "./etf-public";
 import { readUserSnapshot, writeUserSnapshot, type UserSnapshot } from "./user-snapshot";
 import { POST as runTradeAttributionRoute } from "../api/trade/attribution/route";
-import {buildCapabilityRegistry,searchCapabilities} from "./capability-rag";
+import {searchPlatformCapabilityIndex} from "./capability-index-server";
 import {parseStrategyDeterministically} from "./natural-language-strategy";
 import {parseQuantGoal,routeQuantEngine} from "./quant-engine-router";
 
@@ -62,7 +62,7 @@ async function tradeAttributionResult(goal:string){
 async function executeSafeTool(tool:ToolDefinition,goal:string,snapshot:AgentSnapshot):Promise<AgentToolCall>{
   const started=now();const call:AgentToolCall={tool_id:tool.toolId,status:"running",started_at:started,input:{goal:goal.slice(0,500)},sources:[],reliability:reliability({status:"retrying",message:"工具正在执行",retryable:true})};
   try{
-    if(tool.toolId==="search_capabilities"){const providers=(await readProviderState()).providers;const hits=searchCapabilities(goal,buildCapabilityRegistry(providers),{limit:10});call.output={type:"capability_answer",data_status:hits.length?"available":"missing",capabilities:hits,limitations:hits.length?[]:["当前知识库没有找到对应能力"],last_verified_at:new Date().toISOString()};call.sources=[source("capability_registry",hits.length?"available":"missing")];}
+    if(tool.toolId==="search_capabilities"){const result=await searchPlatformCapabilityIndex(goal,{limit:10});call.output={type:"capability_answer",data_status:result.hits.length?"available":"missing",capabilities:result.hits,limitations:result.hits.length?[]:["当前能力索引没有找到对应能力"],index:result.index,runtime:result.runtime};call.sources=[source("capability_registry",result.hits.length?"available":"missing")];}
     else if(tool.toolId==="get_portfolio"||tool.toolId==="calculate_portfolio_risk"){call.output=portfolioResult(snapshot);call.sources=[source("user_portfolio",(call.output as {data_status:string}).data_status==="missing"?"missing":"available")];}
     else if(["search_etf","get_etf_holdings","diagnose_etf_overlap"].includes(tool.toolId)){const codes=[...new Set(goal.match(/(?<!\d)\d{6}(?!\d)/g)??[])];if(!codes.length){call.output={data_status:"missing",message:"暂无数据：请补充 6 位 ETF 代码"};call.sources=[source("fund_disclosure","missing")];}else{const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),15_000);try{call.output=await diagnosePublicEtfs(codes.map((code)=>({code})),controller.signal);}finally{clearTimeout(timer);}call.sources=[source("fund_disclosure")];}}
     else if(tool.toolId==="run_pretrade_check"){call.output=pretradeResult(goal,snapshot);call.sources=[source("user_portfolio",Object.keys(snapshot.holdings??{}).length?"available":"missing"),source("user_input")];}
