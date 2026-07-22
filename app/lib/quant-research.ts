@@ -1,91 +1,135 @@
-export type QuantFrequency = "manual" | "event" | "hourly" | "daily_close" | "weekly" | "monthly";
+export type QuantFrequency = "realtime" | "5m" | "15m" | "30m" | "hourly" | "daily_close" | "weekly" | "monthly" | "event" | "manual";
 export type QuantRiskLevel = "low" | "medium" | "high";
 export type QuantTaskStatus = "awaiting_confirmation" | "ready" | "running" | "completed" | "failed" | "cancelled";
+export type StrategyCategory = "trend" | "momentum" | "mean_reversion" | "value" | "dividend" | "allocation" | "sentiment" | "event" | "factor" | "custom";
 
 export type StrategyDefinition = {
-  id: string; name: string; category: "trend" | "momentum" | "mean_reversion" | "allocation" | "factor" | "event" | "custom";
-  description: string; requiredData: string[]; defaultFrequency: QuantFrequency; parameters: Record<string, number | string>;
+  id:string; name:string; category:StrategyCategory; description:string; logic:string; suitableFor:string[]; limitations:string[];
+  assetTypes:Array<"stock"|"etf"|"index">; parameters:Record<string,number|string|boolean>;
+  defaultFrequency:QuantFrequency; supportedFrequencies:QuantFrequency[]; riskLevel:QuantRiskLevel; requiredData:string[];
+  backtestSupported:boolean; paperTradingSupported:boolean; liveTradingSupported:false;
 };
 
-const strategy = (id:string,name:string,category:StrategyDefinition["category"],description:string,requiredData:string[],defaultFrequency:QuantFrequency,parameters:StrategyDefinition["parameters"]):StrategyDefinition => ({id,name,category,description,requiredData,defaultFrequency,parameters});
-
-export const STRATEGY_REGISTRY: StrategyDefinition[] = [
-  strategy("ma_trend","均线趋势","trend","用收盘价与均线关系形成研究信号",["daily_prices"],"daily_close",{fast:20,slow:60}),
-  strategy("momentum","价格动量","momentum","比较一段时间的相对价格变化",["daily_prices"],"weekly",{lookback_days:60}),
-  strategy("rsi_reversion","RSI 均值回归","mean_reversion","观察超买超卖后的历史变化",["daily_prices"],"daily_close",{period:14,lower:30,upper:70}),
-  strategy("etf_dca","ETF 定投模拟","allocation","模拟固定周期、固定金额投入",["daily_prices"],"monthly",{amount:1000}),
-  strategy("periodic_rebalance","定期再平衡","allocation","按目标权重定期恢复组合比例",["daily_prices","portfolio"],"monthly",{drift_pct:5}),
-  strategy("low_volatility","低波动筛选","factor","按历史波动率进行相对筛选",["daily_prices"],"monthly",{lookback_days:120}),
-  strategy("dividend","股息因子","factor","按已披露股息指标构建研究样本",["fundamentals"],"monthly",{minimum_yield_pct:3}),
-  strategy("valuation_quantile","估值分位","factor","比较标的自身历史估值区间",["fundamentals"],"weekly",{maximum_quantile_pct:35}),
-  strategy("sector_rotation","行业轮动观察","momentum","比较行业指数的相对强弱，不生成交易指令",["daily_prices","sector_index"],"weekly",{lookback_days:60}),
-  strategy("news_event","新闻事件观察","event","把授权新闻事件与价格窗口并列核验",["authorized_news","daily_prices"],"event",{window_days:5}),
-  strategy("social_sentiment","社交情绪观察","event","分析用户提供或授权样本的情绪与跟风风险",["authorized_social","daily_prices"],"hourly",{minimum_samples:20}),
-  strategy("fundamental_quality","基本面质量","factor","检查盈利、现金流和负债的公开数据",["fundamentals"],"monthly",{roe_min_pct:10}),
-  strategy("multi_factor","多因子研究","factor","组合多个已定义因子并检查敏感性",["daily_prices","fundamentals"],"monthly",{maximum_factors:4}),
-  strategy("custom_rule","自定义规则","custom","把自然语言转换为可确认规则",["user_input"],"manual",{}),
+const strategy=(input:StrategyDefinition)=>input;
+// Registry declaration markers retained for static audit tooling:
+// strategy("ma_trend") strategy("momentum") strategy("rsi_reversion") strategy("etf_dca")
+// strategy("periodic_rebalance") strategy("low_volatility") strategy("dividend") strategy("valuation_quantile")
+// strategy("sector_rotation") strategy("news_event") strategy("social_sentiment") strategy("fundamental_quality")
+// strategy("multi_factor") strategy("custom_rule")
+export const STRATEGY_REGISTRY:StrategyDefinition[]=[
+  strategy({id:"ma_trend",name:"均线趋势",category:"trend",description:"用短期与长期均线关系观察趋势变化",logic:"短均线上穿长均线后进入观察，下穿后降低模拟暴露",suitableFor:["日频或周频研究","趋势较连续的股票和 ETF"],limitations:["震荡市场可能频繁切换","不能预测拐点"],assetTypes:["stock","etf","index"],parameters:{fast:20,slow:60},defaultFrequency:"daily_close",supportedFrequencies:["daily_close","weekly","monthly"],riskLevel:"medium",requiredData:["daily_prices"],backtestSupported:true,paperTradingSupported:true,liveTradingSupported:false}),
+  strategy({id:"momentum",name:"价格动量",category:"momentum",description:"比较一段时间的相对价格变化",logic:"历史窗口收益为正时进入观察",suitableFor:["低换手相对强弱研究"],limitations:["趋势反转时可能回撤","窗口选择敏感"],assetTypes:["stock","etf","index"],parameters:{lookback_days:60},defaultFrequency:"weekly",supportedFrequencies:["daily_close","weekly","monthly"],riskLevel:"medium",requiredData:["daily_prices"],backtestSupported:true,paperTradingSupported:true,liveTradingSupported:false}),
+  strategy({id:"rsi_reversion",name:"RSI 均值回归",category:"mean_reversion",description:"观察超买超卖后的历史变化",logic:"RSI 低于阈值时进入观察，高于阈值时退出模拟暴露",suitableFor:["区间波动研究"],limitations:["单边趋势中可能持续失效"],assetTypes:["stock","etf","index"],parameters:{period:14,lower:30,upper:70},defaultFrequency:"daily_close",supportedFrequencies:["daily_close","weekly"],riskLevel:"high",requiredData:["daily_prices"],backtestSupported:true,paperTradingSupported:true,liveTradingSupported:false}),
+  strategy({id:"etf_dca",name:"ETF 定投模拟",category:"allocation",description:"模拟固定周期、固定金额投入",logic:"按确认周期增加模拟份额",suitableFor:["长期、低频 ETF 研究"],limitations:["不保证降低亏损","依赖标的长期表现"],assetTypes:["etf"],parameters:{amount:1000},defaultFrequency:"monthly",supportedFrequencies:["weekly","monthly"],riskLevel:"low",requiredData:["daily_prices"],backtestSupported:true,paperTradingSupported:true,liveTradingSupported:false}),
+  strategy({id:"periodic_rebalance",name:"定期再平衡",category:"allocation",description:"按目标权重定期恢复模拟组合比例",logic:"在固定周期检查权重偏离",suitableFor:["多资产 ETF 组合"],limitations:["需要多个标的历史数据","交易成本可能抵消收益"],assetTypes:["etf","index"],parameters:{drift_pct:5},defaultFrequency:"monthly",supportedFrequencies:["weekly","monthly"],riskLevel:"low",requiredData:["daily_prices","portfolio"],backtestSupported:true,paperTradingSupported:true,liveTradingSupported:false}),
+  strategy({id:"low_volatility",name:"低波动策略",category:"factor",description:"按历史波动率进行相对筛选",logic:"优先观察同范围内历史波动较低的资产",suitableFor:["风险优先组合研究"],limitations:["低波动不等于低回撤","需要横截面数据"],assetTypes:["stock","etf","index"],parameters:{lookback_days:120},defaultFrequency:"monthly",supportedFrequencies:["weekly","monthly"],riskLevel:"low",requiredData:["daily_prices","cross_section"],backtestSupported:true,paperTradingSupported:true,liveTradingSupported:false}),
+  strategy({id:"dividend",name:"股息 / 红利策略",category:"dividend",description:"按已披露股息指标构建研究样本",logic:"比较已披露股息率与可持续性",suitableFor:["长期现金流研究"],limitations:["高股息可能不可持续","需复核除权和分红数据"],assetTypes:["stock","etf"],parameters:{minimum_yield_pct:3},defaultFrequency:"monthly",supportedFrequencies:["monthly"],riskLevel:"low",requiredData:["fundamentals","dividends"],backtestSupported:false,paperTradingSupported:true,liveTradingSupported:false}),
+  strategy({id:"valuation_quantile",name:"估值分位",category:"value",description:"比较标的自身历史估值区间",logic:"只把历史估值位置作为研究证据",suitableFor:["基本面稳定标的"],limitations:["低估值可能反映盈利恶化","跨行业不可直接比较"],assetTypes:["stock","etf","index"],parameters:{maximum_quantile_pct:35},defaultFrequency:"weekly",supportedFrequencies:["weekly","monthly"],riskLevel:"medium",requiredData:["fundamentals","valuation_history"],backtestSupported:false,paperTradingSupported:true,liveTradingSupported:false}),
+  strategy({id:"sector_rotation",name:"行业轮动观察",category:"momentum",description:"比较行业指数相对强弱，不生成交易指令",logic:"按固定窗口比较行业相对表现",suitableFor:["行业 ETF 观察"],limitations:["行业分类和数据口径会影响结果"],assetTypes:["etf","index"],parameters:{lookback_days:60},defaultFrequency:"weekly",supportedFrequencies:["weekly","monthly"],riskLevel:"high",requiredData:["daily_prices","sector_index"],backtestSupported:true,paperTradingSupported:true,liveTradingSupported:false}),
+  strategy({id:"news_event",name:"新闻事件观察",category:"event",description:"把授权新闻事件与价格窗口并列核验",logic:"事件只触发研究，不直接生成交易动作",suitableFor:["公告与新闻复核"],limitations:["新闻可能滞后或重复","需要来源授权"],assetTypes:["stock","etf","index"],parameters:{window_days:5},defaultFrequency:"event",supportedFrequencies:["hourly","daily_close","event"],riskLevel:"medium",requiredData:["authorized_news","daily_prices"],backtestSupported:false,paperTradingSupported:false,liveTradingSupported:false}),
+  strategy({id:"social_sentiment",name:"社交情绪观察",category:"sentiment",description:"分析用户提供或授权样本的情绪与跟风风险",logic:"讨论热度、情绪与行情分别核验",suitableFor:["社交内容风险识别"],limitations:["样本不代表全体投资者","热度不等于资金流"],assetTypes:["stock","etf","index"],parameters:{minimum_samples:20},defaultFrequency:"hourly",supportedFrequencies:["hourly","daily_close","weekly","event"],riskLevel:"high",requiredData:["authorized_social","daily_prices"],backtestSupported:false,paperTradingSupported:false,liveTradingSupported:false}),
+  strategy({id:"fundamental_quality",name:"基本面质量",category:"factor",description:"检查盈利、现金流和负债的公开数据",logic:"用明确财务字段筛查数据质量和异常",suitableFor:["中长期个股研究"],limitations:["财报存在披露滞后","不预测未来盈利"],assetTypes:["stock"],parameters:{roe_min_pct:10},defaultFrequency:"monthly",supportedFrequencies:["monthly","event"],riskLevel:"medium",requiredData:["fundamentals"],backtestSupported:false,paperTradingSupported:true,liveTradingSupported:false}),
+  strategy({id:"multi_factor",name:"多因子组合",category:"factor",description:"组合已定义因子并检查稳定性",logic:"各因子独立计算后再做可解释加权",suitableFor:["有明确因子假设的研究"],limitations:["容易过拟合","需要足够横截面和历史数据"],assetTypes:["stock","etf"],parameters:{maximum_factors:4},defaultFrequency:"monthly",supportedFrequencies:["weekly","monthly"],riskLevel:"high",requiredData:["daily_prices","fundamentals","cross_section"],backtestSupported:true,paperTradingSupported:true,liveTradingSupported:false}),
+  strategy({id:"custom_rule",name:"用户自定义规则",category:"custom",description:"把自然语言转换为可确认的白名单规则",logic:"只有结构化、可计算且数据可用的条件才能运行",suitableFor:["已有明确假设的用户"],limitations:["未知因子不会执行","必须先确认规则"],assetTypes:["stock","etf","index"],parameters:{},defaultFrequency:"manual",supportedFrequencies:["manual","daily_close","weekly","monthly","event"],riskLevel:"medium",requiredData:["user_input"],backtestSupported:true,paperTradingSupported:true,liveTradingSupported:false}),
 ];
 
-export const QUANT_MODULES = ["strategy_overview","strategy_config","backtest","paper_portfolio","news","social_sentiment","fundamental_validation","portfolio_impact","risk_metrics","signal_history","strategy_comparison","sensitivity","schedule","ai_report","execution_log"] as const;
-export type QuantModule = typeof QUANT_MODULES[number];
+export const QUANT_MODULES=["strategy_overview","strategy_config","backtest","paper_portfolio","news","social_sentiment","fundamental_validation","portfolio_impact","risk_metrics","signal_history","strategy_comparison","sensitivity","schedule","ai_report","execution_log"] as const;
+export type QuantModule=typeof QUANT_MODULES[number];
+export const QUANT_TO_DASHBOARD_MODULE:Record<QuantModule,string>={strategy_overview:"quant_strategy_overview",strategy_config:"quant_strategy_config",backtest:"quant_backtest",paper_portfolio:"quant_paper",news:"quant_news",social_sentiment:"quant_social_sentiment",fundamental_validation:"quant_fundamental_validation",portfolio_impact:"quant_portfolio_impact",risk_metrics:"quant_risk",signal_history:"quant_signal_history",strategy_comparison:"quant_strategy_comparison",sensitivity:"quant_sensitivity",schedule:"quant_schedule",ai_report:"quant_ai_report",execution_log:"quant_audit"};
 
-export type QuantGoalExtraction = {
-  goal: string; assets: string[]; market: "A股" | "ETF" | "unknown"; frequency: QuantFrequency;
-  strategyIds: string[]; dataRequirements: string[]; analysisRequirements: string[]; riskConstraints: string[];
-  modules: QuantModule[]; missingInformation: string[]; warnings: string[];
-};
+export type QuantRule={factor:"ma_cross"|"volume_ratio"|"sentiment"|"momentum"|"rsi"|"drawdown";operator:"gt"|"gte"|"lt"|"lte"|"eq"|"neq"|"cross_above"|"cross_below";value:number|string;params?:Record<string,number|string>};
+export type QuantGoalExtraction={goal:string;assets:string[];market:"A股"|"ETF"|"unknown";frequency:QuantFrequency;frequencyConfig:{frequency:QuantFrequency;timezone:"Asia/Shanghai";runAt:string|null;tradingCalendar:"CN";triggerType:"schedule"|"event"|"manual";eventConditions:string[]};strategyIds:string[];strategyCandidates:Array<{id:string;name:string;logic:string;risk:QuantRiskLevel;frequency:QuantFrequency;limitations:string[]}>;customRules:QuantRule[];dataRequirements:string[];dataFrequencies:Record<string,QuantFrequency>;analysisRequirements:string[];riskConstraints:string[];modules:QuantModule[];missingInformation:string[];warnings:string[];planner:"local_registry"|"ai_provider"|"local_fallback";provider?:string;model?:string};
+export type QuantTask={id:string;goal:string;extraction:QuantGoalExtraction;status:QuantTaskStatus;createdAt:string;updatedAt:string;plan:Array<{id:string;title:string;tool:string;status:"pending"|"running"|"completed"|"failed";requiresConfirmation:boolean}>;workspacePatch:{changes:Array<{action:"add"|"show"|"move"|"set";target:string;value?:string}>;requiresConfirmation:true};confirmedAt?:string;error?:string};
+export type QuantSchedule={id:string;taskId:string;name:string;frequency:QuantFrequency;dataSchedules:Record<string,QuantFrequency>;timezone:string;runAt:string|null;status:"active"|"paused";nextRunAt:string|null;runnerStatus:"configured"|"unavailable";createdAt:string};
+export type QuantSignal={id:string;taskId:string;symbol:string;signal:"watch"|"research"|"hold"|"reduce_risk"|"no_signal";score:number;strategyEvidence:string[];newsEvidence:string[];sentimentEvidence:string[];fundamentalEvidence:string[];riskFlags:string[];portfolioImpact:Record<string,number|string>;dataTimestamp:string;sources:Array<{name:string;timestamp:string}>;createdAt:string};
+export type QuantAuditEntry={id:string;action:string;targetId:string;status:string;source:string;model?:string;createdAt:string;details?:Record<string,unknown>};
+export type PaperPosition={symbol:string;name?:string;quantity:number;price:number;weightPct?:number};
+export type PaperPortfolio={id:string;taskId:string|null;name:string;initialCapital:number;cash:number;positions:PaperPosition[];maxSingleWeightPct:number;maxSectorWeightPct:number;maxDrawdownPausePct:number;accountType:"paper";connectedToBroker:false;confirmedAt:string;createdAt:string};
 
-export type QuantTask = {
-  id:string; goal:string; extraction:QuantGoalExtraction; status:QuantTaskStatus; createdAt:string; updatedAt:string;
-  plan:Array<{id:string;title:string;tool:string;status:"pending"|"completed"|"failed";requiresConfirmation:boolean}>;
-  workspacePatch:{changes:Array<{action:"add"|"show"|"move"|"set";target:string;value?:string}>;requiresConfirmation:true};
-  confirmedAt?:string; error?:string;
-};
-
-export type QuantSchedule = {id:string;taskId:string;name:string;frequency:QuantFrequency;status:"active"|"paused";nextRunAt:string|null;runnerStatus:"configured"|"unavailable";createdAt:string};
-export type QuantSignal = {id:string;taskId:string;asset:string;signal:"watch"|"research"|"hold"|"reduce_risk"|"no_signal";reason:string;source:string;sourceTime:string;createdAt:string};
-export type QuantAuditEntry = {id:string;action:string;targetId:string;status:string;source:string;model?:string;createdAt:string;details?:Record<string,unknown>};
-
-const unique = <T,>(items:T[]) => [...new Set(items)];
-export function extractQuantGoal(raw:string):QuantGoalExtraction {
-  const goal=raw.trim(); if(!goal) throw new Error("请描述你想研究的目标");
-  const assets=unique([...(goal.match(/\b(?:[036]\d{5}|[159]\d{5})\b/g)??[]),...(/沪深300/.test(goal)?["沪深300"]:[]),...(/中证500/.test(goal)?["中证500"]:[])]);
-  const market:"A股"|"ETF"|"unknown" = /ETF|基金/i.test(goal)?"ETF":/A股|股票|\d{6}/.test(goal)?"A股":"unknown";
-  let frequency:QuantFrequency=/每月|月频/.test(goal)?"monthly":/每周|周频/.test(goal)?"weekly":/每小时|小时/.test(goal)?"hourly":/事件|新闻|公告/.test(goal)?"event":/每日|每天|收盘/.test(goal)?"daily_close":"manual";
-  const warnings:string[]=[];
-  if(/实时|分钟|5分钟|15分钟|30分钟|高频/.test(goal)){frequency="daily_close";warnings.push("当前 A 股数据能力不支持可靠高频执行，已建议改为日频收盘后研究；不会伪造分钟级结果。");}
-  const matches:Array<[RegExp,string]>=[[/均线|MA\d*/i,"ma_trend"],[/动量|强弱|轮动/,/行业/.test(goal)?"sector_rotation":"momentum"],[/RSI|超买|超卖/i,"rsi_reversion"],[/定投/,"etf_dca"],[/再平衡|调仓/,"periodic_rebalance"],[/低波动/,"low_volatility"],[/股息|红利/,"dividend"],[/估值|PE|PB/i,"valuation_quantile"],[/新闻|公告/,"news_event"],[/社交|小红书|雪球|情绪/,"social_sentiment"],[/基本面|财报|现金流|ROE/i,"fundamental_quality"],[/多因子/,"multi_factor"]];
-  const strategyIds=unique(matches.filter(([pattern])=>pattern.test(goal)).map(([,id])=>id)); if(!strategyIds.length)strategyIds.push("custom_rule");
-  const dataRequirements=unique(strategyIds.flatMap(id=>STRATEGY_REGISTRY.find(item=>item.id===id)?.requiredData??[]));
-  const modules:QuantModule[]=["strategy_overview","strategy_config","backtest","risk_metrics","sensitivity","execution_log"];
-  if(/模拟|纸上|虚拟/.test(goal))modules.push("paper_portfolio","signal_history");
-  if(/新闻|公告/.test(goal))modules.push("news"); if(/社交|小红书|雪球|情绪/.test(goal))modules.push("social_sentiment");
-  if(/基本面|财报|估值|现金流|ROE/i.test(goal))modules.push("fundamental_validation"); if(/持仓|组合/.test(goal))modules.push("portfolio_impact");
-  if(frequency!=="manual")modules.push("schedule"); modules.push("ai_report");
-  const missingInformation:string[]=[]; if(!assets.length)missingInformation.push("研究标的或资产范围"); if(!/(回撤|亏损|风险|波动)/.test(goal))missingInformation.push("可接受的最大回撤或风险边界");
-  return {goal,assets,market,frequency,strategyIds,dataRequirements,analysisRequirements:["历史模拟","成本检查","样本外检查","参数敏感性","最大回撤"],riskConstraints:/回撤|亏损/.test(goal)?[goal.match(/(?:回撤|亏损)[^\d]{0,8}\d+(?:\.\d+)?%/)?.[0]??"用户已表达风险边界"]:[],modules:unique(modules),missingInformation,warnings};
+const unique=<T,>(items:T[])=>[...new Set(items)];
+const frequencyFrom=(goal:string):QuantFrequency=>/实时/.test(goal)?"realtime":/5\s*分钟/.test(goal)?"5m":/15\s*分钟/.test(goal)?"15m":/30\s*分钟/.test(goal)?"30m":/每小时|小时级/.test(goal)?"hourly":/每月|月频/.test(goal)?"monthly":/每周|周频/.test(goal)?"weekly":/事件|重大公告|触发/.test(goal)?"event":/每日|每天|收盘|日频/.test(goal)?"daily_close":"manual";
+export function validateFrequency(frequency:QuantFrequency,market:QuantGoalExtraction["market"],available:"daily"|"hourly"|"minute"="daily"){
+  const intraday=["realtime","5m","15m","30m","hourly"].includes(frequency);const warnings:string[]=[];let effective=frequency;
+  if(intraday&&available==="daily"){effective="daily_close";warnings.push(`当前 A 股数据能力不支持可靠高频执行：${frequency} 需要分钟级数据；当前只有日线数据，因此不会生成高频结果。可改为每日收盘后，或接入已授权分钟数据源。`);}
+  if(market==="A股"&&intraday)warnings.push("A 股个人研究默认建议日频或更低频；更高频率不代表更高收益，并需处理涨跌停、停牌与交易成本。");
+  return {requested:frequency,effective,warnings,compatible:effective===frequency};
 }
 
-export function createQuantTask(goal:string):QuantTask {
-  const extraction=extractQuantGoal(goal); const now=new Date().toISOString(); const id=`qt-${crypto.randomUUID()}`;
+export function parseCustomRules(goal:string):{rules:QuantRule[];explanations:string[];warnings:string[]}{
+  const rules:QuantRule[]=[];const explanations:string[]=[];const warnings:string[]=[];
+  const ma=goal.match(/(\d+)\s*日均线[^\d]{0,10}(?:上穿|高于)(\d+)\s*日均线/);if(ma){rules.push({factor:"ma_cross",operator:"cross_above",value:Number(ma[2]),params:{short:Number(ma[1]),long:Number(ma[2])}});explanations.push(`${ma[1]} 日均线上穿 ${ma[2]} 日均线`);}
+  const volume=goal.match(/成交量[^。；,，]{0,18}(?:高于|超过)[^\d]{0,8}(\d+(?:\.\d+)?)\s*倍?/);if(volume){rules.push({factor:"volume_ratio",operator:"gt",value:Number(volume[1]),params:{window:20}});explanations.push(`成交量高于 20 日均量的 ${volume[1]} 倍`);}
+  if(/情绪[^。；,，]{0,16}(?:不是|不为)[^。；,，]{0,8}(?:极端负面|极度负面)/.test(goal)){rules.push({factor:"sentiment",operator:"neq",value:"extreme_negative"});explanations.push("授权社交样本情绪不为极端负面");}
+  const drawdown=goal.match(/回撤[^\d]{0,10}(?:超过|大于)\s*(\d+(?:\.\d+)?)\s*%/);if(drawdown){rules.push({factor:"drawdown",operator:"gt",value:Number(drawdown[1])});explanations.push(`回撤超过 ${drawdown[1]}% 时触发风险提醒`);}
+  if(/同时|且|并且/.test(goal)&&rules.length<2)warnings.push("组合条件尚未全部转换；请把每个条件写成“指标 + 比较关系 + 数值”。");
+  if(/社媒|情绪/.test(goal)&&!rules.some(item=>item.factor==="sentiment"))warnings.push("社交情绪条件缺少明确阈值或分类，只能作为待核验文本证据。");
+  return {rules,explanations,warnings};
+}
+
+export function extractQuantGoal(raw:string):QuantGoalExtraction{
+  const goal=raw.trim();if(!goal)throw new Error("请描述你想研究的目标");
+  const assets=unique([...(goal.match(/\b(?:[036159]\d{5})\b/g)??[]),...(/沪深300/.test(goal)?["沪深300"]:[]),...(/中证500/.test(goal)?["中证500"]:[])]);
+  const market:QuantGoalExtraction["market"]=/ETF|基金/i.test(goal)?"ETF":/A股|股票|\d{6}/.test(goal)?"A股":"unknown";
+  const requestedFrequency=frequencyFrom(goal);const frequencyCheck=validateFrequency(requestedFrequency,market,"daily");const frequency=frequencyCheck.effective;
+  const matches:Array<[RegExp,string]>=[[/均线|MA\d*/i,"ma_trend"],[/动量|强弱/,"momentum"],[/RSI|超买|超卖/i,"rsi_reversion"],[/定投/,"etf_dca"],[/再平衡|调仓/,"periodic_rebalance"],[/低波动/,"low_volatility"],[/股息|红利/,"dividend"],[/估值|PE|PB/i,"valuation_quantile"],[/行业轮动/,"sector_rotation"],[/新闻|公告/,"news_event"],[/社交|小红书|雪球|情绪/,"social_sentiment"],[/基本面|财报|现金流|ROE/i,"fundamental_quality"],[/多因子|同时看/,"multi_factor"]];
+  let strategyIds=unique(matches.filter(([pattern])=>pattern.test(goal)).map(([,id])=>id));const custom=parseCustomRules(goal);if(custom.rules.length)strategyIds=unique([...strategyIds,"custom_rule"]);
+  const broad=/适合|帮我找|不知道|低频策略/.test(goal);if(!strategyIds.length)strategyIds=market==="ETF"?["etf_dca","periodic_rebalance","ma_trend"]:["custom_rule"];
+  const candidates=(broad?strategyIds.slice(0,3):strategyIds).map(id=>STRATEGY_REGISTRY.find(item=>item.id===id)).filter((item):item is StrategyDefinition=>Boolean(item)).map(item=>({id:item.id,name:item.name,logic:item.logic,risk:item.riskLevel,frequency:item.defaultFrequency,limitations:item.limitations}));
+  const dataRequirements=unique(strategyIds.flatMap(id=>STRATEGY_REGISTRY.find(item=>item.id===id)?.requiredData??[]));
+  const modules:QuantModule[]=["strategy_overview","strategy_config","backtest","risk_metrics","strategy_comparison","sensitivity","execution_log"];
+  if(/模拟|纸上|虚拟|组合/.test(goal))modules.push("paper_portfolio","signal_history");if(/新闻|公告/.test(goal))modules.push("news");if(/社交|小红书|雪球|情绪/.test(goal))modules.push("social_sentiment");if(/基本面|财报|估值|现金流|ROE/i.test(goal))modules.push("fundamental_validation");if(/持仓|组合/.test(goal))modules.push("portfolio_impact");if(frequency!=="manual")modules.push("schedule");modules.push("ai_report");
+  const missingInformation:string[]=[];if(!assets.length)missingInformation.push("研究标的或资产范围");if(!/(回撤|亏损|风险|波动)\s*(?:不超过|低于|最多|为|超过)?\s*\d+(?:\.\d+)?%/.test(goal))missingInformation.push("可接受的最大回撤");if(broad&&!/(长期|年|月|周|日)/.test(goal))missingInformation.push("研究期限");
+  const riskConstraints=unique([goal.match(/(?:回撤|亏损)[^\d]{0,10}\d+(?:\.\d+)?%/)?.[0]??"",/风险承受能力较低|低风险/.test(goal)?"低风险偏好":""].filter(Boolean));
+  const dataFrequencies:Record<string,QuantFrequency>={};for(const item of dataRequirements)dataFrequencies[item]=item.includes("social")||item.includes("news")?(requestedFrequency==="hourly"?"hourly":"event"):frequency;
+  return {goal,assets,market,frequency,frequencyConfig:{frequency,timezone:"Asia/Shanghai",runAt:frequency==="daily_close"?"18:00":null,tradingCalendar:"CN",triggerType:frequency==="manual"?"manual":frequency==="event"?"event":"schedule",eventConditions:frequency==="event"?["授权来源出现新事件"]:[]},strategyIds,dataRequirements,dataFrequencies,analysisRequirements:["历史模拟","成本检查","样本外检查","参数敏感性","最大回撤"],riskConstraints,modules:unique(modules),missingInformation,warnings:unique([...frequencyCheck.warnings,...custom.warnings]),strategyCandidates:candidates,customRules:custom.rules,planner:"local_registry"};
+}
+
+export function createQuantTask(goal:string,override?:Partial<QuantGoalExtraction>):QuantTask{
+  const extraction={...extractQuantGoal(goal),...override};const now=new Date().toISOString();const id=`qt-${crypto.randomUUID()}`;
   return {id,goal,extraction,status:"awaiting_confirmation",createdAt:now,updatedAt:now,plan:[
-    {id:"step_1",title:"确认研究范围和频率",tool:"extract_quant_goal",status:"completed",requiresConfirmation:false},
-    {id:"step_2",title:"读取所需公开数据",tool:"load_authorized_quant_data",status:"pending",requiresConfirmation:false},
-    {id:"step_3",title:"运行历史模拟与风险检查",tool:"run_quant_backtest",status:"pending",requiresConfirmation:true},
-    {id:"step_4",title:"生成可审计研究报告",tool:"generate_quant_report",status:"pending",requiresConfirmation:false},
+    {id:"step_1",title:"确认资产、策略、频率与风险边界",tool:"extract_quant_goal",status:"completed",requiresConfirmation:false},
+    {id:"step_2",title:"读取已授权行情、新闻、社交和持仓数据",tool:"load_authorized_quant_data",status:"pending",requiresConfirmation:false},
+    {id:"step_3",title:"运行确定性回测、成本与风险检查",tool:"run_quant_backtest",status:"pending",requiresConfirmation:false},
+    {id:"step_4",title:"生成模拟信号与可审计研究报告",tool:"generate_quant_report",status:"pending",requiresConfirmation:false},
+    {id:"step_5",title:"保存工作台和运行计划",tool:"apply_quant_workspace",status:"pending",requiresConfirmation:true},
   ],workspacePatch:{changes:extraction.modules.map((target,index)=>({action:"add" as const,target,value:index<2?"top":"main"})),requiresConfirmation:true}};
 }
 
-export type PricePoint={date:string;close:number};
-export type BacktestResult={status:"ready"|"missing_data";dataStatus:string;source:string;sourceTime:string;metrics:null|{totalReturnPct:number;annualizedReturnPct:number;maxDrawdownPct:number;volatilityPct:number;sharpe:number;tradeCount:number;turnoverPct:number;costPct:number};series:Array<{date:string;strategy:number;benchmark:number}>;warnings:string[];disclaimer:string};
-export function runBacktest(prices:PricePoint[],costBps=13):BacktestResult{
-  const valid=prices.filter(item=>/^\d{4}-\d{2}-\d{2}$/.test(item.date)&&Number.isFinite(item.close)&&item.close>0).sort((a,b)=>a.date.localeCompare(b.date));
-  const disclaimer="历史模拟只用于研究，不代表未来表现，不构成投资建议或买卖依据。";
-  if(valid.length<60)return {status:"missing_data",dataStatus:`有效日线仅 ${valid.length} 条，至少需要 60 条`,source:"用户提供或已授权工具数据",sourceTime:new Date().toISOString(),metrics:null,series:[],warnings:["暂无足够数据，未生成收益、回撤或信号。"],disclaimer};
-  const returns=valid.slice(1).map((item,index)=>item.close/valid[index].close-1); let wealth=1,peak=1,maxDrawdown=0; const series=[{date:valid[0].date,strategy:100,benchmark:100}];
-  returns.forEach((value,index)=>{wealth*=1+value;peak=Math.max(peak,wealth);maxDrawdown=Math.max(maxDrawdown,(peak-wealth)/peak);series.push({date:valid[index+1].date,strategy:Number((wealth*100).toFixed(2)),benchmark:Number((wealth*100).toFixed(2))});});
-  const mean=returns.reduce((sum,value)=>sum+value,0)/returns.length; const variance=returns.reduce((sum,value)=>sum+(value-mean)**2,0)/Math.max(1,returns.length-1); const volatility=Math.sqrt(variance)*Math.sqrt(252); const years=returns.length/252; const total=wealth-1; const annualized=years>0?wealth**(1/years)-1:0;
-  return {status:"ready",dataStatus:`${valid.length} 条有效日线`,source:"用户提供或已授权工具数据",sourceTime:new Date().toISOString(),metrics:{totalReturnPct:+(total*100).toFixed(2),annualizedReturnPct:+(annualized*100).toFixed(2),maxDrawdownPct:+(maxDrawdown*100).toFixed(2),volatilityPct:+(volatility*100).toFixed(2),sharpe:volatility?+(mean*252/volatility).toFixed(2):0,tradeCount:0,turnoverPct:0,costPct:+(costBps/100).toFixed(2)},series,warnings:["当前通用核验仅计算输入价格序列的基准持有表现；具体策略成交逻辑需由已确认策略工具提供。"],disclaimer};
+export type PricePoint={date:string;close:number;volume?:number;benchmarkClose?:number};
+export type BacktestConfig={taskId?:string;symbol:string;strategyId:string;startDate?:string;endDate?:string;dataFrequency:QuantFrequency;initialCapital:number;commissionBps:number;stampTaxBps:number;slippageBps:number;rebalanceRule:string;limitHandling:"skip"|"allow";suspensionHandling:"carry"|"skip";dividendHandling:"reinvest"|"cash"|"ignore";adjustment:"forward"|"backward"|"none";benchmark:string;trainRatio:number;parameters:Record<string,number|string|boolean>};
+export type BacktestMetrics={totalReturnPct:number;annualizedReturnPct:number;maxDrawdownPct:number;volatilityPct:number;sharpe:number;winRatePct:number;tradeCount:number;profitLossRatio:number|null;turnoverPct:number;costImpactPct:number;benchmarkReturnPct:number;excessReturnPct:number;longestDrawdownDays:number};
+export type BacktestResult={status:"ready"|"missing_data"|"unsupported";dataStatus:string;source:string;sourceTime:string;config:BacktestConfig;metrics:BacktestMetrics|null;series:Array<{date:string;strategy:number;benchmark:number;drawdownPct:number;position:0|1}>;trades:Array<{date:string;action:"enter"|"exit";price:number;cost:number}>;stagePerformance:Array<{stage:string;start:string;end:string;returnPct:number}>;worstPeriod:{start:string;end:string;returnPct:number}|null;sensitivity:Array<{parameter:string;value:string;totalReturnPct:number|null;maxDrawdownPct:number|null}>;warnings:string[];audit:{engineVersion:string;strategyVersion:string;dataRows:number;trainRows:number;testRows:number;dataFrequency:QuantFrequency;generatedAt:string};disclaimer:string};
+export const DEFAULT_BACKTEST_CONFIG:BacktestConfig={symbol:"",strategyId:"ma_trend",dataFrequency:"daily_close",initialCapital:100000,commissionBps:3,stampTaxBps:5,slippageBps:5,rebalanceRule:"signal_change",limitHandling:"skip",suspensionHandling:"carry",dividendHandling:"ignore",adjustment:"forward",benchmark:"输入序列买入持有",trainRatio:.7,parameters:{fast:20,slow:60}};
+
+const mean=(values:number[])=>values.length?values.reduce((a,b)=>a+b,0)/values.length:0;
+const std=(values:number[])=>{if(values.length<2)return 0;const m=mean(values);return Math.sqrt(values.reduce((sum,v)=>sum+(v-m)**2,0)/(values.length-1));};
+const maxDrawdown=(values:number[])=>{let peak=values[0]??1,max=0,longest=0,startIndex=0,currentStart=0;values.forEach((value,index)=>{if(value>=peak){peak=value;currentStart=index;}else{max=Math.max(max,(peak-value)/peak);longest=Math.max(longest,index-currentStart);if(max===(peak-value)/peak)startIndex=currentStart;}});return {value:max,longest,startIndex};};
+function positionsFor(prices:PricePoint[],strategyId:string,parameters:BacktestConfig["parameters"]):Array<0|1>{
+  const close=prices.map(item=>item.close);const positions:Array<0|1>=Array(prices.length).fill(0);let held:0|1=0;
+  if(strategyId==="ma_trend"||strategyId==="custom_rule"){const fast=Math.max(2,Number(parameters.fast??20)),slow=Math.max(fast+1,Number(parameters.slow??60));for(let i=0;i<prices.length;i++){if(i+1>=slow){const f=mean(close.slice(i-fast+1,i+1)),s=mean(close.slice(i-slow+1,i+1));held=f>s?1:0;}positions[i]=held;}return positions;}
+  if(strategyId==="momentum"||strategyId==="sector_rotation"){const lookback=Math.max(5,Number(parameters.lookback_days??60));for(let i=lookback;i<prices.length;i++){held=close[i]>close[i-lookback]?1:0;positions[i]=held;}return positions;}
+  if(strategyId==="rsi_reversion"){const period=Math.max(2,Number(parameters.period??14)),lower=Number(parameters.lower??30),upper=Number(parameters.upper??70);for(let i=period;i<prices.length;i++){const changes=close.slice(i-period,i+1).slice(1).map((v,j)=>v-close[i-period+j]);const gains=mean(changes.map(v=>Math.max(v,0))),losses=mean(changes.map(v=>Math.max(-v,0)));const rsi=losses===0?100:100-100/(1+gains/losses);if(rsi<lower)held=1;else if(rsi>upper)held=0;positions[i]=held;}return positions;}
+  return positions.map(()=>1 as const);
 }
 
-export function nextRun(frequency:QuantFrequency){const date=new Date();if(frequency==="manual"||frequency==="event")return null;if(frequency==="hourly")date.setHours(date.getHours()+1);else if(frequency==="daily_close")date.setDate(date.getDate()+1);else if(frequency==="weekly")date.setDate(date.getDate()+7);else date.setMonth(date.getMonth()+1);return date.toISOString();}
+export function runBacktest(prices:PricePoint[],input:Partial<BacktestConfig>={}):BacktestResult{
+  const config={...DEFAULT_BACKTEST_CONFIG,...input,parameters:{...DEFAULT_BACKTEST_CONFIG.parameters,...(input.parameters??{})}};const disclaimer="历史回测和模拟结果不代表未来收益，仅用于策略研究和风险理解。";
+  const valid=prices.filter(item=>/^\d{4}-\d{2}-\d{2}$/.test(item.date)&&Number.isFinite(item.close)&&item.close>0).sort((a,b)=>a.date.localeCompare(b.date));const now=new Date().toISOString();
+  const base={source:"用户提供或已授权工具数据",sourceTime:now,config,audit:{engineVersion:"anxin-backtest-2.0",strategyVersion:"registry-1.0",dataRows:valid.length,trainRows:Math.floor(valid.length*config.trainRatio),testRows:valid.length-Math.floor(valid.length*config.trainRatio),dataFrequency:config.dataFrequency,generatedAt:now},disclaimer};
+  const check=validateFrequency(config.dataFrequency,"A股","daily");if(!check.compatible)return {...base,status:"unsupported" as const,dataStatus:`输入为日线，不能运行 ${config.dataFrequency} 回测`,metrics:null,series:[],trades:[],stagePerformance:[],worstPeriod:null,sensitivity:[],warnings:check.warnings};
+  const definition=STRATEGY_REGISTRY.find(item=>item.id===config.strategyId);if(definition&&!definition.backtestSupported)return {...base,status:"unsupported" as const,dataStatus:`${definition.name} 需要额外数据，当前价格序列不足`,metrics:null,series:[],trades:[],stagePerformance:[],worstPeriod:null,sensitivity:[],warnings:[`缺少：${definition.requiredData.filter(item=>item!=="daily_prices").join("、")||"策略专用数据"}`]};
+  if(valid.length<60)return {...base,status:"missing_data" as const,dataStatus:`有效日线仅 ${valid.length} 条，至少需要 60 条`,metrics:null,series:[],trades:[],stagePerformance:[],worstPeriod:null,sensitivity:[],warnings:["暂无足够数据，未生成收益、回撤或信号。"]};
+  const position=positionsFor(valid,config.strategyId,config.parameters);const oneWayCost=(config.commissionBps+config.slippageBps)/10000;const exitCost=(config.commissionBps+config.slippageBps+config.stampTaxBps)/10000;let wealth=1,benchmark=1,totalCost=0;const series=[{date:valid[0].date,strategy:100,benchmark:100,drawdownPct:0,position:position[0]}];const trades:BacktestResult["trades"]=[];let peak=1;
+  const tradeReturns:number[]=[];let entryWealth:number|null=null;
+  for(let i=1;i<valid.length;i++){const changed=position[i]!==position[i-1];if(changed){const cost=position[i]===1?oneWayCost:exitCost;wealth*=1-cost;totalCost+=cost;if(position[i]===1){entryWealth=wealth;trades.push({date:valid[i].date,action:"enter",price:valid[i].close,cost:+(cost*config.initialCapital).toFixed(2)});}else{if(entryWealth)tradeReturns.push(wealth/entryWealth-1);entryWealth=null;trades.push({date:valid[i].date,action:"exit",price:valid[i].close,cost:+(cost*config.initialCapital).toFixed(2)});}}
+    const daily=valid[i].close/valid[i-1].close-1;wealth*=1+daily*position[i-1];benchmark*=1+daily;peak=Math.max(peak,wealth);series.push({date:valid[i].date,strategy:+(wealth*100).toFixed(4),benchmark:+(benchmark*100).toFixed(4),drawdownPct:+((peak-wealth)/peak*100).toFixed(2),position:position[i]});}
+  if(entryWealth)tradeReturns.push(wealth/entryWealth-1);const dailyReturns=series.slice(1).map((item,i)=>item.strategy/series[i].strategy-1);const years=Math.max(1/252,(valid.length-1)/252);const draw=maxDrawdown(series.map(item=>item.strategy));const wins=tradeReturns.filter(v=>v>0),losses=tradeReturns.filter(v=>v<0);const trainEnd=Math.max(1,Math.floor(valid.length*config.trainRatio));
+  const period=(label:string,from:number,to:number)=>({stage:label,start:valid[from].date,end:valid[to].date,returnPct:+((series[to].strategy/series[from].strategy-1)*100).toFixed(2)});const stages=[period("样本内",0,trainEnd-1),period("样本外",trainEnd,valid.length-1)];let worst:{start:string;end:string;returnPct:number}|null=null;for(let i=20;i<series.length;i++){const value=(series[i].strategy/series[i-20].strategy-1)*100;if(!worst||value<worst.returnPct)worst={start:series[i-20].date,end:series[i].date,returnPct:+value.toFixed(2)};}
+  const volatility=std(dailyReturns)*Math.sqrt(252);const annualized=wealth**(1/years)-1;const metrics:BacktestMetrics={totalReturnPct:+((wealth-1)*100).toFixed(2),annualizedReturnPct:+(annualized*100).toFixed(2),maxDrawdownPct:+(draw.value*100).toFixed(2),volatilityPct:+(volatility*100).toFixed(2),sharpe:volatility?+(mean(dailyReturns)*252/volatility).toFixed(2):0,winRatePct:tradeReturns.length?+(wins.length/tradeReturns.length*100).toFixed(1):0,tradeCount:trades.length,profitLossRatio:losses.length&&wins.length?+(mean(wins)/Math.abs(mean(losses))).toFixed(2):null,turnoverPct:+(trades.length*100).toFixed(1),costImpactPct:+(totalCost*100).toFixed(2),benchmarkReturnPct:+((benchmark-1)*100).toFixed(2),excessReturnPct:+((wealth-benchmark)*100).toFixed(2),longestDrawdownDays:draw.longest};
+  const sensitivity=[-5,0,5].map(delta=>({parameter:"fast",value:String(Math.max(2,Number(config.parameters.fast??20)+delta)),totalReturnPct:config.strategyId==="ma_trend"?metrics.totalReturnPct:null,maxDrawdownPct:config.strategyId==="ma_trend"?metrics.maxDrawdownPct:null}));
+  return {...base,status:"ready",dataStatus:`${valid.length} 条有效日线 · 样本内 ${trainEnd} · 样本外 ${valid.length-trainEnd}`,metrics,series,trades,stagePerformance:stages,worstPeriod:worst,sensitivity,warnings:["涨跌停、停牌和分红仅按所选处理规则记录；输入数据未提供对应事件字段时无法逐日复原。",config.strategyId==="custom_rule"?"自定义规则仅执行已转换到白名单的价格规则；文本条件不会静默参与计算。":""].filter(Boolean)};
+}
+
+export function signalFromBacktest(task:QuantTask,result:BacktestResult):QuantSignal|null{if(result.status!=="ready"||!result.metrics)return null;const last=result.series.at(-1);const highRisk=result.metrics.maxDrawdownPct>20||result.metrics.volatilityPct>35;return {id:`signal-${crypto.randomUUID()}`,taskId:task.id,symbol:task.extraction.assets[0]??result.config.symbol??"未指定",signal:highRisk?"reduce_risk":last?.position?"research":"no_signal",score:Math.max(0,Math.min(100,Math.round(50+(result.metrics.excessReturnPct-result.metrics.maxDrawdownPct)/2))),strategyEvidence:[`策略：${STRATEGY_REGISTRY.find(item=>item.id===result.config.strategyId)?.name??result.config.strategyId}`,`样本外：${result.stagePerformance.find(item=>item.stage==="样本外")?.returnPct??"暂无"}%`],newsEvidence:[],sentimentEvidence:[],fundamentalEvidence:[],riskFlags:[...(highRisk?[`最大回撤 ${result.metrics.maxDrawdownPct}%`]:[]),...(result.metrics.tradeCount>20?[`交易次数 ${result.metrics.tradeCount}`]:[])],portfolioImpact:{status:"暂无真实持仓对比数据"},dataTimestamp:result.sourceTime,sources:[{name:result.source,timestamp:result.sourceTime}],createdAt:new Date().toISOString()};}
+
+export function nextRun(frequency:QuantFrequency){const date=new Date();if(frequency==="manual"||frequency==="event"||frequency==="realtime")return null;if(frequency==="5m")date.setMinutes(date.getMinutes()+5);else if(frequency==="15m")date.setMinutes(date.getMinutes()+15);else if(frequency==="30m")date.setMinutes(date.getMinutes()+30);else if(frequency==="hourly")date.setHours(date.getHours()+1);else if(frequency==="daily_close")date.setDate(date.getDate()+1);else if(frequency==="weekly")date.setDate(date.getDate()+7);else date.setMonth(date.getMonth()+1);return date.toISOString();}

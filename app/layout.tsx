@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { GlobalAIAssistantProvider } from "./components/global-ai-assistant";
 import "./globals.css";
+import "./quant-workspace.css";
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
