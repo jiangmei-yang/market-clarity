@@ -1940,3 +1940,28 @@ svg { stroke-width: 1.8; }
 }
 
 .opportunity-submit-row { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* One desktop frame across the workbench, research desk, and analysis tools. */
+@media (min-width: 901px) {
+  .personal-shell { grid-template-columns: var(--rail-width) minmax(0, 1fr); }
+  .personal-sidebar { align-items: center; }
+  .personal-brand { width: 100%; min-height: var(--header-height); height: var(--header-height); padding: 0; justify-content: center; }
+  .personal-brand > div { display: none; }
+  .personal-sidebar > nav { width: 100%; padding: 14px 8px; gap: 5px; }
+  .personal-sidebar > nav a { width: 56px; min-height: 51px; padding: 0; flex-direction: column; justify-content: center; gap: 4px; font-size: 12px; line-height: 1; text-align: center; }
+  .personal-sidebar > nav a svg { width: 19px; height: 19px; }
+  .personal-account { width: 100%; min-height: 64px; padding: 10px 8px 16px; display: flex; justify-content: center; border-top: 1px solid var(--border); }
+  .personal-account > div, .personal-account > a { display: none; }
+  .personal-topbar { min-height: var(--header-height); }
+
+  .native-tool-shell { padding: var(--header-height) 0 0 var(--rail-width); }
+  .native-tool-rail { width: var(--rail-width); display: flex; flex-direction: column; align-items: center; }
+  .native-tool-brand { width: 100%; height: var(--header-height); padding: 0; justify-content: center; }
+  .native-tool-brand > strong { display: none; }
+  .native-tool-rail nav { width: 100%; padding: 14px 8px; gap: 5px; }
+  .native-tool-nav { width: 56px; min-height: 51px; padding: 0; flex-direction: column; justify-content: center; gap: 4px; font-size: 12px; line-height: 1; text-align: center; }
+  .native-tool-nav > span { position: static; width: auto; height: auto; overflow: visible; clip: auto; }
+  .native-tool-nav svg { width: 19px; height: 19px; }
+  .native-tool-header { left: var(--rail-width); height: var(--header-height); }
+  .native-tool-main { min-height: calc(100vh - var(--header-height)); }
+}

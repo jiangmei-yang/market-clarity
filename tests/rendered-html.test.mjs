@@ -48,6 +48,9 @@ test("keeps theme, local signal evidence, and four-step precheck in the workbenc
   assert.match(css, /data-theme="dark_focus"/);
   assert.match(css, /data-motion="reduced"/);
   assert.match(css, /prefers-reduced-motion:\s*reduce/);
+  assert.match(css, /One desktop frame across the workbench, research desk, and analysis tools/);
+  assert.match(css, /\.personal-shell \{ grid-template-columns: var\(--rail-width\)/);
+  assert.match(css, /\.native-tool-shell \{ padding: var\(--header-height\) 0 0 var\(--rail-width\)/);
   assert.match(component, /请粘贴至少一句完整说法/);
   assert.match(component, /请至少写清一项仓位边界/);
   assert.match(component, /研究并加入持仓/);
