@@ -268,6 +268,24 @@ export async function exportAssistantWorkspace(workspaceId?:string){
   return {schema_version:"anxin-workspace-v1",exported_at:new Date().toISOString(),workspace,preferences:snapshot.exploratoryPreferences??null,disclaimer:"配置只包含工作台布局、流程和已确认偏好，不包含 API Key、交易账户或身份资料。"};
 }
 
+export async function workspaceState(){
+  const {snapshot,workspaces,activeWorkspace}=await snapshotOrDefault();
+  return {workspaces,active_workspace_id:activeWorkspace.id,versions:snapshot.workspaceVersions??[],audit:snapshot.workspaceAudit??[],can_undo:snapshot.workspaceVersions?.length?true:false,can_redo:snapshot.workspaceRedoVersions?.length?true:false};
+}
+
+export async function restoreAssistantWorkspaceVersion(configId:string){
+  const {snapshot,workspaces}=await snapshotOrDefault();
+  const version=(snapshot.workspaceVersions??[]).find((item)=>item.configId===configId);
+  if(!version)throw new Error("工作台历史版本不存在");
+  const current=workspaces.find((item)=>item.id===version.workspace.id);
+  snapshot.workspaceVersions=[...(snapshot.workspaceVersions??[]),...(current?[{configId:`config-${Date.now()}`,workspace:current,createdAt:new Date().toISOString(),action:"update" as const}]:[])].slice(-50);
+  snapshot.workspaces=current?workspaces.map((item)=>item.id===version.workspace.id?version.workspace:item):[...workspaces,version.workspace];
+  snapshot.activeWorkspaceId=version.workspace.id;
+  snapshot.workspaceAudit=[...(snapshot.workspaceAudit??[]),{commandId:`restore-${Date.now()}`,intent:"restore_version",proposedChanges:[`恢复版本 ${configId}`],status:"applied" as const,createdAt:new Date().toISOString(),confirmedAt:new Date().toISOString()}].slice(-200);
+  await writeUserSnapshot(snapshot);
+  return {status:"restored",workspace:version.workspace,config_id:configId,can_undo:true};
+}
+
 export async function assistantSessionSummary() {
   const { activeWorkspace, snapshot } = await snapshotOrDefault();
   const { providers } = await readProviderState();

@@ -1,0 +1,3 @@
+import { NextResponse } from "next/server";
+import { createAssistantPreview } from "../../lib/assistant-server";
+export async function POST(request:Request){try{const body=await request.json() as Record<string,unknown>;const instruction=typeof body.instruction==="string"?body.instruction:"";if(!instruction.trim())return NextResponse.json({message:"请描述工作台修改目标"},{status:422});const result=await createAssistantPreview(instruction,typeof body.workspace_id==="string"?body.workspace_id:undefined);return NextResponse.json({type:"workspace_preview",command_id:result.commandId,workspace_patch:result.parsed,requires_confirmation:true});}catch(error){return NextResponse.json({message:error instanceof Error?error.message:"无法生成预览"},{status:422});}}

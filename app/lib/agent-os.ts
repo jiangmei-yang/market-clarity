@@ -1,0 +1,104 @@
+import { DEFAULT_PROFILE, analyzeSocialContent, createWorkspace, precheckTrade, previewWorkspaceChange, type InvestorProfile, type Workspace } from "./personal-workbench";
+import { callAIProvider, readProviderState } from "./ai-provider-catalog";
+import { DATA_SOURCE_REGISTRY, MODULE_REGISTRY, TOOL_CATALOG, WORKFLOW_REGISTRY, searchTools, themePatchFromRequirements, type AgentPlanStep, type GoalExtraction, type ThemeSchema, type ToolDefinition, type ToolProposal } from "./agent-registry";
+import { cancelAssistantCommand, createAssistantPreview, confirmAssistantCommand } from "./assistant-server";
+import { diagnosePublicEtfs } from "./etf-public";
+import { readUserSnapshot, writeUserSnapshot, type UserSnapshot } from "./user-snapshot";
+import { POST as runTradeAttributionRoute } from "../api/trade/attribution/route";
+
+export type AgentSource={source_id:string;name:string;collected_at:string;sample_scope:string;status:"available"|"missing"|"unavailable"};
+export type AgentToolCall={tool_id:string;status:"pending"|"running"|"completed"|"failed"|"cancelled";started_at?:string;completed_at?:string;input:Record<string,unknown>;output?:unknown;error?:string;sources:AgentSource[]};
+export type AgentTask={type:"agent_task";task_id:string;goal:string;status:"planning"|"awaiting_confirmation"|"completed"|"failed"|"cancelled";created_at:string;updated_at:string;provider:string;model:string;planner_mode:"provider"|"local_fallback";extraction:GoalExtraction;plan:{task_id:string;goal:string;steps:AgentPlanStep[];requires_confirmation:boolean};steps:AgentPlanStep[];tool_calls:AgentToolCall[];workspace_patch:ReturnType<typeof previewWorkspaceChange>|null;workspace_command_id?:string;theme_schema?:ThemeSchema;result:unknown;warnings:string[];sources:AgentSource[];tool_proposal?:ToolProposal;requires_confirmation:boolean;original_input:string};
+type AgentSnapshot=UserSnapshot&{workspaces?:Workspace[];activeWorkspaceId?:string;holdings?:Record<string,{name?:string;value?:number;industry?:string}>;investorProfile?:InvestorProfile;agentTasks?:AgentTask[]};
+
+const AGENT_PLANNER_PROMPT=`你是安心看股 Goal-to-Workspace 规划器。只返回 JSON，不写额外文字。你必须理解目标而不是输出投资建议。不得编造数据、工具或执行状态。输出字段：goal,context,user_stage,data_requirements,analysis_requirements,tool_requirements,ui_requirements,workflow_requirements,automation_requirements,style_requirements,risk_constraints,missing_information,risk_level。risk_level 只能是 low/medium/high/restricted。涉及自动交易、买卖执行或收益承诺必须 restricted。`;
+const now=()=>new Date().toISOString();
+const cleanList=(value:unknown)=>Array.isArray(value)?value.filter((item):item is string=>typeof item==="string").slice(0,20):[];
+const extractJson=(text:string)=>{const match=text.match(/\{[\s\S]*\}/);if(!match)throw new Error("规划模型没有返回 JSON");return JSON.parse(match[0]) as Record<string,unknown>;};
+
+function localExtraction(goal:string,context:Record<string,unknown>):GoalExtraction{
+  const catalogHits=TOOL_CATALOG.filter((item)=>item.keywords.some((term)=>goal.toLowerCase().includes(term.toLowerCase())));
+  const styles=["科技感","极简","浅色","深色","专业研究风","新手友好","低刺激","数据密集","控制台","轻量动画","高对比","减少红绿"].filter((term)=>goal.includes(term));
+  const restricted=/(自动|替我).*(买入|卖出|下单|交易)|保证收益|必涨/.test(goal);
+  const userStage=/(小白|新手|不知道)/.test(goal)?"beginner":/(专业|机构)/.test(goal)?"professional":"unknown";
+  const ui=/(工作台|页面|界面|模块|主题|布局|颜色|字体|图表|动效|隐藏|显示|增加|移动|调整)/.test(goal)?[goal]:[];
+  const workflows=/(流程|每周|每天|定期|复盘后|先做)/.test(goal)?[goal]:[];
+  const socialLive=/(小红书|雪球|社交平台).*(最近|现在|热点|讨论什么)/.test(goal);
+  return {goal,context,user_stage:userStage,data_requirements:[...new Set(catalogHits.flatMap((item)=>item.dataSources))],analysis_requirements:[...new Set(catalogHits.filter((item)=>["analysis","risk","quant"].includes(item.category)).map((item)=>item.description))],tool_requirements:catalogHits.map((item)=>item.toolId),ui_requirements:ui,workflow_requirements:workflows,automation_requirements:/(提醒|每周|每天|定期)/.test(goal)?[goal]:[],style_requirements:styles,risk_constraints:restricted?["禁止自动交易，必须停止在人工确认前"]:[],missing_information:socialLive?["当前没有已授权的社交平台实时样本；请上传或粘贴合法取得的公开内容"]:[],risk_level:restricted?"restricted":/(规则|提醒|模拟组合|工作台)/.test(goal)?"medium":"low"};
+}
+
+function validateExtraction(raw:Record<string,unknown>,goal:string,context:Record<string,unknown>):GoalExtraction{
+  const risk=["low","medium","high","restricted"].includes(String(raw.risk_level))?raw.risk_level as GoalExtraction["risk_level"]:"low";
+  return {goal:typeof raw.goal==="string"?raw.goal:goal,context,user_stage:["beginner","learner","experienced","professional","unknown"].includes(String(raw.user_stage))?raw.user_stage as GoalExtraction["user_stage"]:"unknown",data_requirements:cleanList(raw.data_requirements),analysis_requirements:cleanList(raw.analysis_requirements),tool_requirements:cleanList(raw.tool_requirements),ui_requirements:cleanList(raw.ui_requirements),workflow_requirements:cleanList(raw.workflow_requirements),automation_requirements:cleanList(raw.automation_requirements),style_requirements:cleanList(raw.style_requirements),risk_constraints:cleanList(raw.risk_constraints),missing_information:cleanList(raw.missing_information),risk_level:risk};
+}
+
+function source(sourceId:string,status:AgentSource["status"]="available"):AgentSource{const item=DATA_SOURCE_REGISTRY.find((row)=>row.sourceId===sourceId);return {source_id:sourceId,name:item?.name??sourceId,collected_at:now(),sample_scope:item?.scope??"工具返回范围",status};}
+function portfolioResult(snapshot:AgentSnapshot){const holdings=snapshot.holdings??{};const rows=Object.entries(holdings).map(([code,item])=>({code,name:item.name??code,value:Number(item.value??0),industry:item.industry??"待核对"})).filter((item)=>item.value>0);const total=rows.reduce((sum,item)=>sum+item.value,0);const positions=rows.map((item)=>({...item,weight:total?item.value/total:0})).sort((a,b)=>b.weight-a.weight);return {data_status:rows.length?"user_saved":"missing",portfolio_value:total,position_count:rows.length,largest_position:positions[0]??null,positions};}
+
+function pretradeResult(goal:string,snapshot:AgentSnapshot){
+  const holdings=snapshot.holdings??{};const code=goal.match(/(?<!\d)\d{6}(?!\d)/)?.[0];const selected=code?holdings[code]:undefined;
+  const portfolioValue=Object.values(holdings).reduce((sum,item)=>sum+Number(item.value??0),0);
+  const amountMatch=goal.match(/(?:计划|准备|大约|金额|补仓|买入)[^\d]{0,12}([\d,.]+)\s*(万|元)/);
+  const rawAmount=amountMatch?Number(amountMatch[1].replaceAll(",","")):0;const amount=amountMatch?.[2]==="万"?rawAmount*10_000:rawAmount;
+  const sector=selected?.industry;const currentSectorValue=sector?Object.values(holdings).filter((item)=>item.industry===sector).reduce((sum,item)=>sum+Number(item.value??0),0):0;
+  const similarAssets=sector?Object.entries(holdings).filter(([holdingCode,item])=>holdingCode!==code&&item.industry===sector).map(([,item])=>item.name??"未命名资产"):[];
+  const recent=goal.match(/(?:近期|最近)[^\d-]{0,8}(-?\d+(?:\.\d+)?)\s*%/);
+  const holdingPeriod=goal.match(/(?:持有|期限)[^，。；]{0,18}/)?.[0]??"";const exitCondition=goal.match(/(?:如果|失效|退出|止损)[^，。；]{0,36}/)?.[0]??"";
+  const result=precheckTrade({amount,portfolioValue,currentAssetValue:Number(selected?.value??0),currentSectorValue,reason:goal,holdingPeriod,exitCondition,recentChange:recent?Number(recent[1]):0,source:/(朋友|群里|小红书|雪球|大V)/.test(goal)?"social":"user",similarAssets},snapshot.investorProfile??DEFAULT_PROFILE);
+  return {data_status:amount>0?"calculated":"missing_input",code:code??null,amount:amount||null,...result,message:amount>0?undefined:"暂无完整金额：已检查理由与退出条件，但仓位比例需要补充计划金额。"};
+}
+
+async function tradeAttributionResult(goal:string){
+  const headerIndex=goal.search(/日期\s*[,，]\s*代码\s*[,，]\s*名称\s*[,，]\s*方向/);
+  if(headerIndex<0)return {data_status:"missing",message:"暂无交易记录：请粘贴包含“日期,代码,名称,方向,价格,数量,金额,费用”的 CSV。"};
+  const content=goal.slice(headerIndex).replaceAll("，",",");const response=await runTradeAttributionRoute(new Request("http://internal/api/trade/attribution",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({file_content:content,delimiter:","})}));
+  return response.json();
+}
+
+async function executeSafeTool(tool:ToolDefinition,goal:string,snapshot:AgentSnapshot):Promise<AgentToolCall>{
+  const started=now();const call:AgentToolCall={tool_id:tool.toolId,status:"running",started_at:started,input:{goal:goal.slice(0,500)},sources:[]};
+  try{
+    if(tool.toolId==="get_portfolio"||tool.toolId==="calculate_portfolio_risk"){call.output=portfolioResult(snapshot);call.sources=[source("user_portfolio",(call.output as {data_status:string}).data_status==="missing"?"missing":"available")];}
+    else if(["search_etf","get_etf_holdings","diagnose_etf_overlap"].includes(tool.toolId)){const codes=[...new Set(goal.match(/(?<!\d)\d{6}(?!\d)/g)??[])];if(!codes.length){call.output={data_status:"missing",message:"暂无数据：请补充 6 位 ETF 代码"};call.sources=[source("fund_disclosure","missing")];}else{call.output=await diagnosePublicEtfs(codes.map((code)=>({code})));call.sources=[source("fund_disclosure")];}}
+    else if(tool.toolId==="run_pretrade_check"){call.output=pretradeResult(goal,snapshot);call.sources=[source("user_portfolio",Object.keys(snapshot.holdings??{}).length?"available":"missing"),source("user_input")];}
+    else if(tool.toolId==="run_trade_attribution"){call.output=await tradeAttributionResult(goal);call.sources=[source("user_uploaded_csv",(call.output as {data_status?:string}).data_status==="missing"?"missing":"available")];}
+    else if(tool.toolId==="analyze_social_content"){const looksLikeSample=goal.length>120||/[“”「」]|https?:\/\//.test(goal);if(!looksLikeSample){call.output={type:"social_trend_analysis",period:"暂无数据",sources:[],topics:[],data_status:"insufficient_sample",message:"当前没有足够样本。请粘贴或上传合法取得的公开内容；系统不会伪造小红书或雪球热度。",disclaimer:"社交讨论热度不代表投资价值或未来收益。"};call.sources=[source("xiaohongshu_live","unavailable")];}else{call.output={type:"social_content_analysis",sample_count:1,analysis:analyzeSocialContent(goal),disclaimer:"社交热度仅代表内容讨论情况，不构成投资建议或买卖依据。"};call.sources=[source("user_uploaded_social_content")];}}
+    else{call.output={data_status:"not_executed",message:"工具已匹配，但仍需要补充输入或在对应工具页面执行。"};call.sources=tool.dataSources.map((id)=>source(id,"missing"));}
+    call.status="completed";call.completed_at=now();return call;
+  }catch(error){call.status="failed";call.error=error instanceof Error?error.message:"工具执行失败";call.completed_at=now();call.sources=tool.dataSources.map((id)=>source(id,"unavailable"));return call;}
+}
+
+export function createToolProposal(goal:string):ToolProposal{return {name:`“${goal.slice(0,32)}”能力`,purpose:goal,inputs:["用户目标","必要参数"],outputs:["结构化结果","数据来源","错误状态"],data_sources:[],permissions:["仅限白名单数据访问","实现后需人工审核"],risks:["数据源可能不存在","金融结论不得由模型编造","禁止执行任意代码"],status:"proposal",requires_human_review:true};}
+
+async function snapshotState(){const result=await readUserSnapshot();if(result.status!=="ready"&&result.status!=="empty")throw new Error("请先登录");const snapshot=(result.status==="ready"?result.snapshot:{}) as AgentSnapshot;const workspaces=snapshot.workspaces?.length?snapshot.workspaces:[createWorkspace("long_term")];const current=workspaces.find((item)=>item.id===snapshot.activeWorkspaceId)??workspaces[0];return {snapshot,workspaces,current};}
+
+export async function createAgentTask(input:{goal:string;route?:string;selected_provider?:string}){
+  const goal=input.goal.trim().slice(0,4000);if(!goal)throw new Error("请描述你想完成什么");
+  const {snapshot,current}=await snapshotState();const providerState=await readProviderState();const provider=providerState.providers.find((item)=>item.providerId===input.selected_provider&&item.enabled&&item.connectionStatus==="available")??providerState.providers.find((item)=>item.isDefault&&item.enabled&&item.connectionStatus==="available")??providerState.providers.find((item)=>item.providerId==="mock")!;
+  const context={route:input.route??"/agent",workspace_id:current.id,workspace_name:current.name,user_preferences:snapshot.exploratoryPreferences??null,portfolio_status:Object.keys(snapshot.holdings??{}).length?"available":"missing"};
+  let extraction:GoalExtraction;let plannerMode:AgentTask["planner_mode"]="local_fallback";
+  if(provider.providerId!=="mock")try{const content=await callAIProvider(provider,[{role:"system",content:AGENT_PLANNER_PROMPT},{role:"user",content:JSON.stringify({goal,context,registries:{tools:TOOL_CATALOG.map((item)=>({tool_id:item.toolId,description:item.description,permission:item.permissionLevel})),modules:MODULE_REGISTRY,workflows:WORKFLOW_REGISTRY}})}],900);extraction=validateExtraction(extractJson(content),goal,context);plannerMode="provider";}catch{extraction=localExtraction(goal,context);}else extraction=localExtraction(goal,context);
+  if(/(自动|替我).*(买入|卖出|下单|交易)|保证收益|必涨/.test(goal)){extraction.risk_level="restricted";extraction.risk_constraints=[...extraction.risk_constraints,"交易执行被禁止；只可生成交易前检查"]}
+  const requestsNewTool=/(增加|创建|做一个|开发).*(工具|分析器|检测器|模拟器)/.test(goal);
+  const capabilityGap=extraction.tool_requirements.some((toolId)=>!TOOL_CATALOG.some((item)=>item.toolId===toolId))||(requestsNewTool&&!/(ETF|回测|定投|交易前|交易复盘|社交内容|社交热点|指标解释|提醒|观察列表|工作台)/i.test(goal));
+  let matched=[...new Map([...searchTools(extraction),...TOOL_CATALOG.filter((item)=>extraction.tool_requirements.includes(item.toolId))].map((item)=>[item.toolId,item])).values()].filter((item)=>item.permissionLevel!=="restricted");
+  if(capabilityGap)matched=[];
+  const toolCalls:AgentToolCall[]=[];for(const item of matched.filter((tool)=>tool.permissionLevel==="safe").slice(0,5))toolCalls.push(await executeSafeTool(item,goal,snapshot));
+  const needsWorkspace=extraction.ui_requirements.length>0||extraction.style_requirements.length>0||/(工作台|模块|布局|主题|界面|放到首页)/.test(goal);
+  let workspacePatch:AgentTask["workspace_patch"]=null;let workspaceCommandId:string|undefined;let themeSchema:ThemeSchema|undefined;
+  if(needsWorkspace){const previewResult=await createAssistantPreview(goal,current.id);workspacePatch=previewResult.parsed;if(workspacePatch.canApply)workspaceCommandId=previewResult.commandId;themeSchema=themePatchFromRequirements(extraction.style_requirements.length?extraction.style_requirements:[goal],workspacePatch.preview.theme)?.themeSchema;}
+  const steps:AgentPlanStep[]=[{id:"step_1",title:"理解目标与当前上下文",tool:null,status:"completed",requires_confirmation:false},...matched.slice(0,6).map((item,index)=>({id:`step_${index+2}`,title:item.name,tool:item.toolId,status:(item.permissionLevel==="safe"?(toolCalls.find((call)=>call.tool_id===item.toolId)?.status??"pending"):"pending") as AgentPlanStep["status"],requires_confirmation:item.permissionLevel!=="safe"})),...(needsWorkspace?[{id:`step_${matched.length+2}`,title:"预览工作台修改",tool:"workspace_orchestrator",status:workspacePatch?.canApply?"completed" as const:"failed" as const,requires_confirmation:true}]:[])];
+  const sources=[...new Map(toolCalls.flatMap((call)=>call.sources).map((item)=>[`${item.source_id}:${item.status}`,item])).values()];const warnings=[...extraction.risk_constraints,...extraction.missing_information];if(plannerMode==="local_fallback")warnings.push("当前没有可用的真实 AI Provider；任务结构由本地 Registry 匹配生成，不会冒充模型规划。");
+  const workspaceFailed=needsWorkspace&&!workspacePatch?.canApply;const requiresConfirmation=Boolean(!workspaceFailed&&(workspaceCommandId||matched.some((item)=>item.permissionLevel==="confirm")));const taskId=`task_${crypto.randomUUID().replaceAll("-","").slice(0,14)}`;const task:AgentTask={type:"agent_task",task_id:taskId,goal,status:extraction.risk_level==="restricted"||workspaceFailed?"failed":requiresConfirmation?"awaiting_confirmation":"completed",created_at:now(),updated_at:now(),provider:provider.providerId,model:provider.model,planner_mode:plannerMode,extraction,plan:{task_id:taskId,goal,steps,requires_confirmation:requiresConfirmation},steps,tool_calls:toolCalls,workspace_patch:workspacePatch,workspace_command_id:workspaceCommandId,theme_schema:themeSchema,result:toolCalls.map((call)=>({tool:call.tool_id,status:call.status,output:call.output})),warnings,sources,tool_proposal:capabilityGap?createToolProposal(goal):undefined,requires_confirmation:requiresConfirmation,original_input:goal};
+  const latestResult=await readUserSnapshot();
+  const latest=(latestResult.status==="ready"?latestResult.snapshot:snapshot) as AgentSnapshot;
+  latest.agentTasks=[...(latest.agentTasks??[]),task].slice(-100);
+  await writeUserSnapshot(latest);return task;
+}
+
+export async function getAgentTask(taskId?:string){const {snapshot}=await snapshotState();if(!taskId)return (snapshot.agentTasks??[]).slice().reverse();const task=(snapshot.agentTasks??[]).find((item)=>item.task_id===taskId);if(!task)throw new Error("任务不存在");return task;}
+async function updateTask(taskId:string,fn:(task:AgentTask)=>AgentTask){const {snapshot}=await snapshotState();const tasks=snapshot.agentTasks??[];const index=tasks.findIndex((item)=>item.task_id===taskId);if(index<0)throw new Error("任务不存在");tasks[index]=fn(tasks[index]);snapshot.agentTasks=tasks;await writeUserSnapshot(snapshot);return tasks[index];}
+export async function cancelAgentTask(taskId:string){const task=await getAgentTask(taskId) as AgentTask;if(task.workspace_command_id)await cancelAssistantCommand(task.workspace_command_id);return updateTask(taskId,(item)=>({...item,status:"cancelled",requires_confirmation:false,updated_at:now(),steps:item.steps.map((step)=>step.requires_confirmation||step.status==="pending"?{...step,status:"cancelled"}:step),tool_calls:item.tool_calls.map((call)=>call.status==="pending"||call.status==="running"?{...call,status:"cancelled"}:call)}));}
+export async function confirmAgentTask(taskId:string){const task=await getAgentTask(taskId) as AgentTask;if(task.status==="cancelled"||task.extraction.risk_level==="restricted")throw new Error("该任务不能确认执行");if(task.workspace_command_id)await confirmAssistantCommand(task.workspace_command_id);const unsupported=task.steps.filter((step)=>step.requires_confirmation&&step.tool!=="workspace_orchestrator");return updateTask(taskId,(item)=>({...item,status:unsupported.length?"failed":"completed",requires_confirmation:false,updated_at:now(),warnings:unsupported.length?[...item.warnings,`已确认，但 ${unsupported.map((step)=>step.title).join("、")} 仍缺少必要参数或执行适配，未伪造完成状态。`]:item.warnings,steps:item.steps.map((step)=>step.requires_confirmation?step.tool==="workspace_orchestrator"?{...step,status:"completed"}:{...step,status:"failed"}:step)}));}
+export async function retryAgentTask(taskId:string){const task=await getAgentTask(taskId) as AgentTask;if(!task.steps.some((step)=>step.status==="failed")&&!task.tool_calls.some((call)=>call.status==="failed"))throw new Error("当前任务没有失败步骤");return createAgentTask({goal:task.original_input,selected_provider:task.provider});}
+export function listTools(){return {tools:TOOL_CATALOG,modules:MODULE_REGISTRY,data_sources:DATA_SOURCE_REGISTRY,workflows:WORKFLOW_REGISTRY};}

@@ -6,6 +6,7 @@ import {
   ArrowRight,
   BarChart3,
   Bookmark,
+  Bot,
   BriefcaseBusiness,
   Check,
   CheckCircle2,
@@ -202,6 +203,7 @@ const navItems = [
 ];
 
 const toolNavItems = [
+  { href: "/agent", label: "Agent 工作台", icon: Bot },
   { href: "/quant", label: "量化规则", icon: ScanSearch },
   { href: "/etf-tool", label: "ETF 诊断", icon: Layers3 },
   { href: "/trade-tool", label: "交易复盘", icon: ReceiptText },

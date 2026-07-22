@@ -3,6 +3,7 @@
 import Link from "next/link";
 import {
   BriefcaseBusiness,
+  Bot,
   FileSearch,
   History,
   LayoutDashboard,
@@ -13,15 +14,16 @@ import {
 } from "lucide-react";
 
 type ProductToolShellProps = {
-  active: "etf" | "trade" | "quant";
+  active: "etf" | "trade" | "quant" | "agent";
   title: string;
   description: string;
   status: string;
   children: React.ReactNode;
 };
 
-const navigation: Array<{ href: string; label: string; icon: typeof LayoutDashboard; id?: "trade" }> = [
+const navigation: Array<{ href: string; label: string; icon: typeof LayoutDashboard; id?: "trade" | "agent" }> = [
   { href: "/", label: "工作台", icon: LayoutDashboard },
+  { href: "/agent", label: "Agent", icon: Bot, id: "agent" },
   { href: "/analysis?view=research", label: "研究", icon: FileSearch },
   { href: "/analysis?view=portfolio", label: "组合", icon: BriefcaseBusiness },
   { href: "/quant", label: "量化规则", icon: ScanSearch },

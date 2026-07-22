@@ -16,6 +16,7 @@ export type UserSnapshot = {
   workspaceRedoVersions?: unknown;
   workspaceAudit?: unknown;
   exploratoryPreferences?: unknown;
+  agentTasks?: unknown;
   aiDefaultProviderId?: string;
   aiTaskRouting?: unknown;
   savedAt?: string;

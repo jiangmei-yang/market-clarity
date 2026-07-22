@@ -29,6 +29,59 @@ test("creates auditable patches for add, hide, move, resize, and theme", () => {
   assert.equal(hidden.patch.filter((item) => item.op === "set_visibility" && item.visible === false).length, 2);
   const themed = workspace.previewWorkspaceChange(current, "切换深色主题");
   assert.ok(themed.patch.some((item) => item.op === "set_theme" && item.theme === "dark_focus"));
+  const naturalTheme = workspace.previewWorkspaceChange(current, "改成科技感浅色主题，减少红绿颜色并使用轻量动画");
+  assert.equal(naturalTheme.preview.theme.themeId, "clear_blue");
+  assert.equal(naturalTheme.preview.theme.marketColors, "accessible");
+  assert.equal(naturalTheme.preview.theme.motion, "standard");
+  assert.equal(naturalTheme.needsConfirmation, true);
+});
+
+test("keeps Agent planning general, auditable, and honest about missing social data", async () => {
+  const [registry, agent, component, proposalRoute] = await Promise.all([
+    readFile(new URL("../app/lib/agent-registry.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/lib/agent-os.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/agent-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/tools/proposals/route.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(registry, /TOOL_CATALOG/);
+  assert.match(registry, /MODULE_REGISTRY/);
+  assert.match(registry, /DATA_SOURCE_REGISTRY/);
+  assert.match(registry, /WORKFLOW_REGISTRY/);
+  assert.match(registry, /xiaohongshu_live[^\n]+available:false/);
+  assert.match(registry, /execute_trade[^\n]+restricted/);
+  assert.match(agent, /callAIProvider/);
+  assert.match(agent, /planner_mode/);
+  assert.match(agent, /type:\"agent_task\"/);
+  assert.match(agent, /plan:\{task_id:taskId,goal,steps,requires_confirmation/);
+  assert.match(agent, /当前没有足够样本/);
+  assert.match(agent, /未伪造完成状态/);
+  assert.match(agent, /cancelAssistantCommand/);
+  assert.match(component, /工作台修改预览/);
+  assert.match(component, /结果预览/);
+  assert.match(component, /数据来源/);
+  assert.match(component, /确认并应用/);
+  assert.match(proposalRoute, /requires_human_review:true/);
+});
+
+test("supports a source-transparent social observation workspace without inventing trends", () => {
+  const current=workspace.createWorkspace("custom");
+  const result=workspace.previewWorkspaceChange(current,"现在小红书上大家在讨论什么？把热门主题放进我的工作台");
+  assert.equal(result.recommendation.recommendedTemplate,"social_risk");
+  assert.ok(result.preview.modules.some((item)=>item.type==="social_topics"));
+  assert.ok(result.preview.modules.some((item)=>item.type==="fundamental_verification"));
+  assert.ok(result.preview.modules.some((item)=>item.type==="portfolio_overlap"));
+  assert.equal(result.needsConfirmation,true);
+});
+
+test("keeps dedicated preview, apply, history, multi-workspace and restore endpoints", async () => {
+  const files=await Promise.all([
+    "../app/workspace/preview/route.ts","../app/workspace/apply/route.ts","../app/workspace/history/route.ts","../app/workspaces/route.ts","../app/workspaces/[id]/restore/route.ts",
+  ].map((path)=>readFile(new URL(path,import.meta.url),"utf8")));
+  assert.match(files[0],/createAssistantPreview/);
+  assert.match(files[1],/confirmed!==true/);
+  assert.match(files[2],/workspaceState/);
+  assert.match(files[3],/requires_confirmation:true/);
+  assert.match(files[4],/restoreAssistantWorkspaceVersion/);
 });
 
 test("changes only whitelisted workflows and blocks transaction execution", () => {

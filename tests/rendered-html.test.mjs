@@ -137,7 +137,7 @@ test("routes assistant questions through deterministic tools before a real model
 });
 
 test("mounts one global AI assistant across every product route", async () => {
-  const routes = ["/", "/workspace", "/opportunity", "/portfolio", "/analysis", "/quant", "/etf-tool", "/trade-tool", "/ai-settings"];
+  const routes = ["/", "/workspace", "/opportunity", "/portfolio", "/analysis", "/agent", "/quant", "/etf-tool", "/trade-tool", "/ai-settings"];
   for (const path of routes) {
     const response = await render(path);
     assert.equal(response.status, 200, path);
@@ -146,6 +146,29 @@ test("mounts one global AI assistant across every product route", async () => {
     assert.match(html, /查资料、算影响、拆说法；不替你交易/, path);
     assert.match(html, /aria-label="AI 助手对话记录"/, path);
   }
+});
+
+test("server-renders the Goal-to-Workspace Agent desk", async () => {
+  const response = await render("/agent");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /Agent 工作台/);
+  assert.match(html, /告诉我你想完成什么/);
+  assert.match(html, /生成执行计划/);
+  assert.match(html, /工具白名单已启用/);
+  assert.match(html, /查询和计算可直接执行/);
+  assert.match(html, /工作台、规则、提醒和模拟必须确认/);
+});
+
+test("exposes explicit tool, module, data-source and workflow registries", async () => {
+  const response = await render("/tools", { headers: { accept: "application/json" } });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.ok(body.tools.some((item) => item.toolId === "diagnose_etf_overlap"));
+  assert.ok(body.tools.some((item) => item.toolId === "execute_trade" && item.permissionLevel === "restricted"));
+  assert.ok(body.modules.some((item) => item.moduleId === "social_risk"));
+  assert.ok(body.data_sources.some((item) => item.sourceId === "xiaohongshu_live" && item.available === false));
+  assert.ok(body.workflows.social.includes("check_social_claim"));
 });
 
 test("keeps global assistant state, confirmation gates, context, and mobile drawer in source", async () => {

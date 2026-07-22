@@ -13,7 +13,7 @@ export type UserStage = "beginner" | "learner" | "long_term" | "etf_user" | "act
 export type ExploratoryGoal = "learn_basics" | "build_process" | "analyze_etf" | "diagnose_portfolio" | "review_trades" | "check_social_risk" | "simulate_investing" | "track_portfolio" | "market_only" | "learn_and_start" | "unknown";
 export type WorkspaceWorkflowStep = "learn" | "simulate" | "research" | "check_social_claim" | "review_risk" | "pretrade_check" | "confirm_next_step" | "review_trade" | "generate_report" | "weekly_review" | "check_etf_overlap";
 export type WorkspaceModule = { type: ModuleType; visible: boolean; order: number; width: "full" | "half" | "third"; density: Density };
-export type ModuleType = "portfolio_overview" | "portfolio_risk" | "etf_overlap" | "sector_exposure" | "financial_quality" | "valuation" | "technical_chart" | "technical_signals" | "social_risk" | "opportunity_check" | "trade_review" | "watchlist" | "learning_card" | "rule_deviation" | "recent_alerts" | "ai_summary" | "investment_goal" | "risk_tolerance" | "etf_basics" | "simulation_portfolio" | "term_explainer" | "pretrade_checklist" | "weekly_digest" | "drawdown_watch" | "liquidity_watch";
+export type ModuleType = "portfolio_overview" | "portfolio_risk" | "etf_overlap" | "sector_exposure" | "financial_quality" | "valuation" | "technical_chart" | "technical_signals" | "social_risk" | "social_topics" | "social_heat" | "social_sentiment" | "fundamental_verification" | "valuation_verification" | "volume_verification" | "portfolio_overlap" | "opportunity_check" | "trade_review" | "watchlist" | "learning_card" | "rule_deviation" | "recent_alerts" | "ai_summary" | "investment_goal" | "risk_tolerance" | "etf_basics" | "simulation_portfolio" | "term_explainer" | "pretrade_checklist" | "weekly_digest" | "drawdown_watch" | "liquidity_watch";
 export type Density = "simple" | "standard" | "professional";
 export type ThemeId = "light_quiet" | "paper_reading" | "clear_blue" | "dark_focus" | "high_contrast";
 export type WorkspaceTheme = { themeId: ThemeId; mode: "light" | "dark"; accent: "indigo" | "blue" | "slate"; fontScale: "small" | "medium" | "large"; radius: "compact" | "standard" | "soft"; chartStyle: "line" | "area"; motion: "reduced" | "standard"; marketColors: "cn" | "accessible" };
@@ -39,7 +39,7 @@ export type PrecheckResult = { reasonType: string; violations: string[]; checks:
 
 export const MODULE_LABELS: Record<ModuleType, string> = {
   portfolio_overview: "组合概览", portfolio_risk: "持仓风险", etf_overlap: "ETF 重复暴露", sector_exposure: "行业暴露", financial_quality: "财报体检",
-  valuation: "估值位置", technical_chart: "技术图表", technical_signals: "技术指标", social_risk: "社交内容风险", opportunity_check: "机会检查", trade_review: "最近交易行为",
+  valuation: "估值位置", technical_chart: "技术图表", technical_signals: "技术指标", social_risk: "社交内容风险", social_topics:"社交热点主题", social_heat:"热度变化", social_sentiment:"情绪分布", fundamental_verification:"基本面核验", valuation_verification:"估值核验", volume_verification:"资金与成交量核验", portfolio_overlap:"与持仓重合度", opportunity_check: "机会检查", trade_review: "最近交易行为",
   watchlist: "关注列表", learning_card: "金融知识", rule_deviation: "规则偏离", recent_alerts: "最近风险提醒", ai_summary: "AI 摘要",
   investment_goal: "投资目标", risk_tolerance: "风险边界", etf_basics: "ETF 入门", simulation_portfolio: "模拟持仓", term_explainer: "术语解释", pretrade_checklist: "交易前检查", weekly_digest: "每周摘要", drawdown_watch: "回撤观察", liquidity_watch: "流动性提醒",
 };
@@ -99,7 +99,7 @@ const WORKSPACE_TEMPLATES: Record<WorkspaceTemplateId, { name: string; strategy:
   etf: { name: "ETF 工作台", strategy: "etf_allocation", density: "standard", explanation: "beginner", description: "先看底层持仓、重复暴露，再看组合风险", modules: ["portfolio_overview", "etf_basics", "etf_overlap", "sector_exposure", "portfolio_risk", "weekly_digest"], workflow: ["research", "check_etf_overlap", "review_risk", "confirm_next_step"], alertFrequency: "weekly" },
   active: { name: "波段观察工作台", strategy: "swing_trading", density: "professional", explanation: "professional", description: "保留趋势观察，但先执行交易前风险检查", modules: ["watchlist", "technical_chart", "technical_signals", "pretrade_checklist", "portfolio_risk", "trade_review"], workflow: ["research", "review_risk", "pretrade_check", "confirm_next_step"], alertFrequency: "event_based" },
   beginner_safe_start: { name: "新手起步工作台", strategy: "beginner", density: "simple", explanation: "beginner", description: "先学习和模拟，再逐步建立自己的风险检查流程", modules: ["investment_goal", "risk_tolerance", "etf_basics", "portfolio_risk", "simulation_portfolio", "term_explainer", "pretrade_checklist"], workflow: ["learn", "simulate", "review_risk", "confirm_next_step"], alertFrequency: "weekly" },
-  social_risk: { name: "社交内容核实工作台", strategy: "social_risk", density: "standard", explanation: "beginner", description: "先拆分社交说法和证据，再检查组合影响", modules: ["opportunity_check", "social_risk", "portfolio_risk", "rule_deviation", "recent_alerts"], workflow: ["check_social_claim", "research", "review_risk", "confirm_next_step"], alertFrequency: "event_based" },
+  social_risk: { name: "社交热点观察工作台", strategy: "social_risk", density: "standard", explanation: "beginner", description: "先看样本边界和内容风险，再用基本面、估值与持仓交叉核验", modules: ["social_topics", "social_heat", "social_sentiment", "social_risk", "fundamental_verification", "valuation_verification", "volume_verification", "portfolio_overlap"], workflow: ["check_social_claim", "research", "review_risk", "confirm_next_step"], alertFrequency: "event_based" },
   trade_review: { name: "交易复盘工作台", strategy: "reviewer", density: "standard", explanation: "intermediate", description: "把交易记录、行为偏差和复盘报告放在同一流程", modules: ["trade_review", "rule_deviation", "portfolio_risk", "ai_summary", "weekly_digest"], workflow: ["review_trade", "generate_report", "weekly_review"], alertFrequency: "weekly" },
   risk_control: { name: "风险控制工作台", strategy: "risk_first", density: "standard", explanation: "beginner", description: "优先观察集中度、回撤、流动性和个人规则偏离", modules: ["portfolio_risk", "drawdown_watch", "sector_exposure", "liquidity_watch", "rule_deviation", "pretrade_checklist"], workflow: ["review_risk", "pretrade_check", "confirm_next_step"], alertFrequency: "event_based" },
   custom: { name: "自定义工作台", strategy: "custom", density: "standard", explanation: "beginner", description: "按自己的研究流程调整", modules: ["recent_alerts", "portfolio_risk", "social_risk", "trade_review"], workflow: ["research", "review_risk", "confirm_next_step"], alertFrequency: "daily" },
@@ -161,7 +161,7 @@ export function previewWorkspaceChange(workspace: Workspace, rawInstruction: str
   if (instruction.includes("恢复默认")) { const reset = createWorkspace("long_term"); preview = { ...reset, id: workspace.id }; changes.push("恢复长期投资默认布局"); patch.push({ op: "restore_default" }); preview.modules.forEach((item)=>affected.add(item.type)); return finish("reset_workspace"); }
 
   const need = classifyWorkspaceNeed(instruction);
-  const fuzzyRequest = /(想挣钱|小白|新手|不知道.*看什么|不知道.*适合|帮我安排|没时间|只想学习|学习模式|先模拟|已经有持仓|持仓复盘|社交平台影响|只.*ETF|(创建|新建).*(ETF|长期|复盘|风险).*工作台)/i.test(instruction);
+  const fuzzyRequest = /(想挣钱|小白|新手|不知道.*看什么|不知道.*适合|帮我安排|没时间|只想学习|学习模式|先模拟|已经有持仓|持仓复盘|社交平台影响|小红书|雪球|热门主题|社交热点|只.*ETF|(创建|新建).*(ETF|长期|复盘|风险|社交).*工作台)/i.test(instruction);
   if (fuzzyRequest) {
     const candidate = createWorkspace(need.template);
     preview = { ...candidate, id: workspace.id };
@@ -174,7 +174,8 @@ export function previewWorkspaceChange(workspace: Workspace, rawInstruction: str
   }
   if(/忘记.*短线/.test(instruction)){preview.strategy="custom";preview.modules.forEach((item)=>{if(["technical_chart","technical_signals"].includes(item.type)){item.visible=false;affected.add(item.type);patch.push({op:"set_visibility",module:item.type,visible:false});}});preview.workflow=["research","review_risk","confirm_next_step"];patch.push({op:"set_workflow",workflow:preview.workflow});changes.push("关闭短线技术模块并恢复通用风险复核流程");}
   if (/主要做|主要配置|关注/.test(instruction) && /ETF/i.test(instruction)) { preview.strategy = "etf_allocation"; preview.preferredAssets = ["ETF"]; changes.push("投资模式调整为 ETF 配置"); }
-  const sectors = ["科技", "医药", "消费", "金融", "新能源", "半导体", "人工智能", "红利"].filter((item) => instruction.includes(item));
+  const sectorInstruction = instruction.replace(/科技感/g, "");
+  const sectors = ["科技", "医药", "消费", "金融", "新能源", "半导体", "人工智能", "红利"].filter((item) => sectorInstruction.includes(item));
   if (sectors.length) { preview.preferredSectors = sectors; changes.push(`关注行业调整为${sectors.join("、")}`); }
   if (instruction.includes("财报") && /顶部|最前|第一/.test(instruction)) {
     let target = preview.modules.find((item) => item.type === "financial_quality");
@@ -229,15 +230,17 @@ export function previewWorkspaceChange(workspace: Workspace, rawInstruction: str
     if (target && /(缩小|半宽)/.test(instruction)) { target.width="half"; changes.push(`${label}调整为半宽`); patch.push({op:"resize_module",module:moduleType,width:"half"}); affected.add(moduleType); }
   }
   if (/(隐藏|不看|去掉).*(K线|技术|趋势)/.test(instruction)) { preview.modules.forEach((item) => { if (["technical_chart", "technical_signals"].includes(item.type)) { item.visible = false; affected.add(item.type); patch.push({op:"set_visibility",module:item.type,visible:false}); } }); changes.push("隐藏技术图表和技术指标"); }
-  if (/(简洁|只显示结论|少一点)/.test(instruction)) { preview.density = "simple"; preview.modules.forEach((item) => { item.density = "simple"; }); changes.push("信息密度调整为简洁"); }
-  if (/(专业|详细数据|更多数据)/.test(instruction)) { preview.density = "professional"; preview.modules.forEach((item) => { item.density = "professional"; }); changes.push("信息密度调整为专业"); }
+  if (/(简洁|极简|低刺激|只显示结论|少一点)/.test(instruction)) { preview.density = "simple"; preview.modules.forEach((item) => { item.density = "simple"; }); changes.push("信息密度调整为简洁"); }
+  if (/(专业|数据密集|紧凑|详细数据|更多数据)/.test(instruction)) { preview.density = "professional"; preview.modules.forEach((item) => { item.density = "professional"; }); changes.push("信息密度调整为专业"); }
   if (/(白话|新手解释)/.test(instruction)) { preview.explanationLevel = "beginner"; changes.push("解释难度调整为白话"); }
-  if (/(晚上|夜间|深色)/.test(instruction)) { preview.theme = { ...preview.theme, themeId: "dark_focus", mode: "dark" }; changes.push("主题调整为深色专注"); patch.push({op:"set_theme",theme:"dark_focus"}); }
+  if (/(晚上|夜间|深色|控制台)/.test(instruction)) { preview.theme = { ...preview.theme, themeId: "dark_focus", mode: "dark" }; changes.push("主题调整为深色专注"); patch.push({op:"set_theme",theme:"dark_focus"}); }
   else if (/(纸张|阅读主题)/.test(instruction)) { preview.theme = { ...preview.theme, themeId: "paper_reading", mode: "light" }; changes.push("主题调整为纸张阅读"); patch.push({op:"set_theme",theme:"paper_reading"}); }
   else if (/(高对比|文字深一点)/.test(instruction)) { preview.theme = { ...preview.theme, themeId: "high_contrast", mode: "light" }; changes.push("主题调整为高对比"); patch.push({op:"set_theme",theme:"high_contrast"}); }
-  else if (/(清透蓝|背景更亮|减少紫色)/.test(instruction)) { preview.theme = { ...preview.theme, themeId: "clear_blue", mode: "light", accent: "blue" }; changes.push("主题调整为清透蓝"); patch.push({op:"set_theme",theme:"clear_blue"}); }
+  else if (/(清透蓝|背景更亮|减少紫色|科技感|浅色|专业研究风)/.test(instruction)) { preview.theme = { ...preview.theme, themeId: "clear_blue", mode: "light", accent: "blue" }; changes.push("主题调整为清透蓝"); patch.push({op:"set_theme",theme:"clear_blue"}); }
   if (/(大字|字体大)/.test(instruction)) { preview.theme = { ...preview.theme, fontScale: "large" }; changes.push("字体调整为大号"); }
-  if (/(减少动效|关闭动效)/.test(instruction)) { preview.theme = { ...preview.theme, motion: "reduced" }; changes.push("动效调整为减少"); }
+  if (/(轻量动画|轻微动效)/.test(instruction)) { preview.theme = { ...preview.theme, motion: "standard" }; changes.push("动效调整为轻量"); }
+  if (/(减少动效|关闭动效|低动态)/.test(instruction)) { preview.theme = { ...preview.theme, motion: "reduced" }; changes.push("动效调整为减少"); }
+  if (/(减少红绿|少用红绿)/.test(instruction)) { preview.theme = { ...preview.theme, marketColors: "accessible" }; changes.push("涨跌之外减少红绿颜色"); }
   const frequency = [["关闭提醒", "off"], ["每天", "daily"], ["每日", "daily"], ["每周", "weekly"], ["每月", "monthly"], ["事件触发", "event_based"]] as const;
   frequency.some(([label, value]) => { if (instruction.includes(label)) { preview.alertFrequency = value; changes.push(`风险提醒调整为${label}`); patch.push({op:"set_alert_frequency",frequency:value}); return true; } return false; });
   if (/输入股票后先做风险检查/.test(instruction)) { preview.workflow=["research","review_risk","pretrade_check","confirm_next_step"]; changes.push("输入股票后先做风险检查"); patch.push({op:"set_workflow",workflow:preview.workflow}); }

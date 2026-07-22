@@ -1,0 +1,4 @@
+import { NextResponse } from "next/server";
+import { createAssistantPreview, workspaceState } from "../lib/assistant-server";
+export async function GET(){try{return NextResponse.json(await workspaceState());}catch(error){return NextResponse.json({message:error instanceof Error?error.message:"无法读取工作台"},{status:503});}}
+export async function POST(request:Request){try{const body=await request.json() as Record<string,unknown>;const goal=typeof body.goal==="string"?body.goal:typeof body.template==="string"?`新建一个 ${body.template} 工作台`:"";if(!goal)return NextResponse.json({message:"请描述要创建的工作台"},{status:422});const result=await createAssistantPreview(goal);return NextResponse.json({type:"workspace_preview",command_id:result.commandId,workspace_patch:result.parsed,requires_confirmation:true});}catch(error){return NextResponse.json({message:error instanceof Error?error.message:"无法创建工作台预览"},{status:422});}}

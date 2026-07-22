@@ -7,7 +7,7 @@ import {
   ChevronDown, CircleAlert, FileSearch, Gauge, Home, Layers3,
   LogOut, MessageSquareWarning, Plus, Save, Settings2, ShieldCheck,
   SlidersHorizontal, Sparkles, Undo2, RotateCcw, X, Palette, Eye, EyeOff,
-  Cpu, KeyRound, PlugZap, Trash2,
+  Cpu, KeyRound, PlugZap, Trash2, Bot,
 } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -38,6 +38,7 @@ type Snapshot = {
 const DISCLAIMER = "本工具仅用于投资信息、持仓分析和交易复盘参考，不构成任何投资建议、收益承诺或买卖建议。";
 const nav = [
   { href: "/", label: "工作台", icon: Home }, { href: "/opportunity", label: "机会检查", icon: MessageSquareWarning },
+  { href: "/agent", label: "Agent", icon: Bot },
   { href: "/profile", label: "我的规则", icon: SlidersHorizontal }, { href: "/portfolio", label: "我的组合", icon: BriefcaseBusiness },
   { href: "/analysis", label: "股票研究", icon: FileSearch }, { href: "/etf-tool", label: "ETF 诊断", icon: Layers3 },
   { href: "/trade-tool", label: "交易复盘", icon: ShieldCheck }, { href: "/ai-settings", label: "AI 模型", icon: Sparkles },
