@@ -15,7 +15,7 @@ function providerInput(payload: Record<string,unknown>): AIProviderInput {
 }
 
 export async function GET() {
-  try { const { providers, defaultProviderId } = await readPublicProviderState(); return Response.json({ providers, default_provider_id:defaultProviderId, platform_default_provider_id:"hkgai_main", fallback_provider_id:"mock" }); }
+  try { const { providers, defaultProviderId, privacyMode } = await readPublicProviderState(); return Response.json({ providers, default_provider_id:defaultProviderId, platform_default_provider_id:"builtin", fallback_provider_id:"mock", privacy_mode:privacyMode }); }
   catch (error) { return Response.json({ error:error instanceof Error?error.message:"无法读取模型设置" }, { status:401 }); }
 }
 

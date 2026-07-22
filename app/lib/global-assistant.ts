@@ -48,7 +48,9 @@ export type AssistantProvider = {
   enabled: boolean;
   isDefault: boolean;
   secretStatus: "not_required" | "server_configured" | "missing";
-  connectionStatus?: "available" | "missing_configuration";
+  connectionStatus?: "available" | "missing_configuration" | "unavailable";
+  mode?: "local" | "platform" | "external" | "rules";
+  privacyLabel?: string;
   isPlatformDefault?: boolean;
   description?: string;
 };

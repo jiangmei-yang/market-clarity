@@ -89,7 +89,7 @@ test("keeps AI keys server-only and applies per-user provider priority", async (
     readFile(new URL("../app/components/personal-workbench.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/ai/providers/discover/route.ts", import.meta.url), "utf8"),
   ]);
-  assert.match(catalog, /providerId:"hkgai_main"/);
+  assert.match(catalog, /base\("hkgai_main"/);
   assert.match(catalog, /snapshot\.aiDefaultProviderId/);
   assert.match(catalog, /AES-GCM/);
   assert.match(catalog, /AI_PROVIDER_ENCRYPTION_KEY/);
@@ -107,6 +107,47 @@ test("keeps AI keys server-only and applies per-user provider priority", async (
   assert.match(catalog, /模型名称或调用模式未被服务商接受/);
   assert.match(discoveryRoute, /discoverUnsavedProviderModels/);
   assert.doesNotMatch(settings, /(?:localStorage|sessionStorage)\.setItem\([^\n]*apiKey/i);
+});
+
+test("exposes real built-in and local model modes without pretending they are installed", async () => {
+  const [catalog,settings,assistant,privacyRoute,localRoute]=await Promise.all([
+    readFile(new URL("../app/lib/ai-provider-catalog.ts",import.meta.url),"utf8"),
+    readFile(new URL("../app/components/personal-workbench.tsx",import.meta.url),"utf8"),
+    readFile(new URL("../app/components/global-ai-assistant.tsx",import.meta.url),"utf8"),
+    readFile(new URL("../app/api/ai/privacy/route.ts",import.meta.url),"utf8"),
+    readFile(new URL("../app/api/ai/local-models/route.ts",import.meta.url),"utf8"),
+  ]);
+  assert.match(catalog,/base\("builtin"/);
+  assert.match(catalog,/base\("ollama"/);
+  assert.match(catalog,/base\("vllm"/);
+  assert.match(catalog,/base\("llamacpp"/);
+  assert.match(catalog,/AI_BUILTIN_BASE_URL/);
+  assert.match(catalog,/aiPrivacyMode/);
+  assert.match(catalog,/不会伪装成生成式 AI/);
+  assert.match(settings,/仅使用本机模型/);
+  assert.match(settings,/未安装 \/ 未配置/);
+  assert.match(settings,/平台内置模型/);
+  assert.match(assistant,/取消生成/);
+  assert.match(privacyRoute,/setAIPrivacyMode/);
+  assert.match(localRoute,/automatic_install_supported:false/);
+  assert.doesNotMatch(settings,/(?:localStorage|sessionStorage)\.setItem\([^\n]*apiKey/i);
+});
+
+test("publishes provider health, capability, privacy, and local-model endpoints", async () => {
+  const routes=await Promise.all([
+    "../app/api/ai/providers/[provider_id]/health/route.ts",
+    "../app/api/ai/providers/[provider_id]/capabilities/route.ts",
+    "../app/api/ai/providers/[provider_id]/route.ts",
+    "../app/api/ai/privacy/route.ts",
+    "../app/api/ai/local-models/route.ts",
+    "../app/api/ai/local-models/[model_name]/route.ts",
+  ].map((path)=>readFile(new URL(path,import.meta.url),"utf8")));
+  assert.match(routes[0],/testProviderConnection/);
+  assert.match(routes[1],/modelCapabilities/);
+  assert.match(routes[2],/export async function GET/);
+  assert.match(routes[3],/export async function POST/);
+  assert.match(routes[4],/export async function GET/);
+  assert.match(routes[5],/export async function DELETE/);
 });
 
 test("returns a specific setup error before model discovery sends a request", async () => {

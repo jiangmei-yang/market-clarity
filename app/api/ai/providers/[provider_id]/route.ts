@@ -1,4 +1,4 @@
-import { deleteUserProvider, updateUserProvider, type AIProviderInput } from "@/app/lib/ai-provider-catalog";
+import { deleteUserProvider, readPublicProviderState, updateUserProvider, type AIProviderInput } from "@/app/lib/ai-provider-catalog";
 
 function providerInput(payload: Record<string,unknown>): AIProviderInput {
   return {
@@ -12,6 +12,11 @@ function providerInput(payload: Record<string,unknown>): AIProviderInput {
     enabled:payload.enabled as boolean|undefined,
     capabilities:payload.capabilities as AIProviderInput["capabilities"],
   };
+}
+
+export async function GET(_request:Request,context:{params:Promise<{provider_id:string}>}) {
+  try { const {provider_id}=await context.params; const {providers}=await readPublicProviderState(); const provider=providers.find((item)=>item.providerId===provider_id); return provider?Response.json(provider):Response.json({message:"没有找到该模型"},{status:404}); }
+  catch(error){return Response.json({message:error instanceof Error?error.message:"无法读取模型"},{status:401});}
 }
 
 export async function PUT(request: Request, context: { params: Promise<{ provider_id:string }> }) {

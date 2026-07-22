@@ -17,6 +17,7 @@ import {
   RotateCcw,
   Redo2,
   Send,
+  Square,
   Settings2,
   ShieldCheck,
   Sparkles,
@@ -67,8 +68,10 @@ export function GlobalAIAssistantProvider({ children }: { children: React.ReactN
   ]);
   const [sending, setSending] = useState(false);
   const [providerMenuOpen, setProviderMenuOpen] = useState(false);
+  const [privacyMode,setPrivacyMode]=useState(false);
   const [hydrated, setHydrated] = useState(false);
   const messageEndRef = useRef<HTMLDivElement>(null);
+  const requestControllerRef=useRef<AbortController|null>(null);
   const context = useMemo(() => {
     const query = searchParams.toString();
     return pageContextFor(query ? `${pathname}?${query}` : pathname);
@@ -99,9 +102,10 @@ export function GlobalAIAssistantProvider({ children }: { children: React.ReactN
     let active=true;
     const loadProviders=()=>fetch("/assistant/session", { cache: "no-store" }).then(async (response) => {
       if (!response.ok) throw new Error("unavailable");
-      const payload = await response.json() as { session_id?: string; workspace_id?: string; providers?: AssistantProvider[]; default_provider_id?: string; can_undo?:boolean; can_redo?:boolean };
+      const payload = await response.json() as { session_id?: string; workspace_id?: string; providers?: AssistantProvider[]; default_provider_id?: string; can_undo?:boolean; can_redo?:boolean;privacy_mode?:boolean };
       if (!active) return;
       if (payload.providers?.length) setProviders(payload.providers);
+      setPrivacyMode(Boolean(payload.privacy_mode));
       setState((current) => ({
         ...current,
         sessionId: current.sessionId || payload.session_id || createAssistantSession().sessionId,
@@ -137,6 +141,7 @@ export function GlobalAIAssistantProvider({ children }: { children: React.ReactN
     appendMessage({ id: nowId("user"), type: "user_message", content: message, createdAt: new Date().toISOString() });
     setState((current) => ({ ...current, draft: "", open: true }));
     setSending(true);
+    const controller=new AbortController(); requestControllerRef.current=controller;
     try {
       const response = await fetch("/assistant/message", {
         method: "POST",
@@ -150,6 +155,7 @@ export function GlobalAIAssistantProvider({ children }: { children: React.ReactN
           selected_provider: state.selectedProvider,
           history: state.messages.filter((item) => item.type === "user_message" || item.type === "assistant_message" || item.type === "analysis").slice(-10).map((item) => ({ role:item.type === "user_message" ? "user" : "assistant", content:item.content })),
         }),
+        signal:controller.signal,
       });
       const payload = await response.json() as { type?:AssistantMessage["type"];content?:string;message?: { type?: AssistantMessage["type"]; content?: string; preview?: AssistantCommandPreview }; preview?:AssistantCommandPreview;model_used?: string; provider_id?:string;session_id?: string;tool_used?:string|null };
       if (!response.ok) throw new Error(payload.content || payload.message?.content || "助手暂时没有响应");
@@ -165,8 +171,8 @@ export function GlobalAIAssistantProvider({ children }: { children: React.ReactN
       if (payload.provider_id) setState((current) => ({ ...current, selectedProvider:payload.provider_id! }));
       if (payload.session_id) setState((current) => ({ ...current, sessionId: payload.session_id! }));
     } catch (error) {
-      appendMessage({ id: nowId("error"), type: "error_message", content: error instanceof Error ? error.message : "助手暂时不可用，请稍后再试。", createdAt: new Date().toISOString() });
-    } finally { setSending(false); }
+      appendMessage({ id: nowId("error"), type: "error_message", content: error instanceof DOMException&&error.name==="AbortError"?"已取消本次生成；已完成的工具结果不会被伪造或补写。":error instanceof Error ? error.message : "助手暂时不可用，请稍后再试。", createdAt: new Date().toISOString() });
+    } finally { requestControllerRef.current=null;setSending(false); }
   }, [appendMessage, context, pathname, sending, state.currentWorkspaceId, state.draft, state.messages, state.pendingPreview, state.selectedProvider, state.sessionId]);
 
   const confirmPreview = async (preview: AssistantCommandPreview) => {
@@ -253,18 +259,18 @@ export function GlobalAIAssistantProvider({ children }: { children: React.ReactN
           </header>
 
           <section className="assistant-model-bar" aria-label="当前 AI 模型">
-            <div><Cpu /><span><small>当前模型</small><strong>{currentProvider?.displayName ?? "未连接"}</strong></span><Badge variant={currentProvider?.connectionStatus === "available" || currentProvider?.secretStatus === "not_required" ? "secondary" : "outline"}>{currentProvider?.providerId === "mock" ? "自由对话未启用" : currentProvider?.connectionStatus === "available" ? "已连接" : "需要配置"}</Badge></div>
+            <div><Cpu /><span><small>{privacyMode?"本地隐私模式":"当前模型"}</small><strong>{currentProvider?.displayName ?? "未连接"}</strong></span><Badge variant={currentProvider?.connectionStatus === "available" || currentProvider?.secretStatus === "not_required" ? "secondary" : "outline"}>{currentProvider?.providerId === "mock" ? "AI 未启用" : currentProvider?.connectionStatus === "available" ? (currentProvider.mode==="local"?"本机处理":currentProvider.mode==="platform"?"平台处理":"第三方 API") : "需要配置"}</Badge></div>
             <Button variant="outline" size="sm" onClick={() => setProviderMenuOpen((open) => !open)}>{currentProvider?.providerId === "mock" ? "接入真实模型" : "切换"}<ChevronDown data-icon="inline-end" /></Button>
           </section>
 
           {providerMenuOpen && <section className="assistant-provider-menu" aria-label="切换 AI 模型">
-            {availableProviders.map((provider) => <button key={provider.providerId} type="button" disabled={provider.secretStatus === "missing"} className={provider.providerId === state.selectedProvider ? "active" : undefined} onClick={() => { setState((current) => ({ ...current, selectedProvider:provider.providerId })); setProviderMenuOpen(false); }}><span><strong>{provider.displayName}</strong><small>{provider.model || (provider.providerId === "mock" ? "确定性规则" : "尚未配置")}</small></span><i>{provider.providerId === state.selectedProvider ? <Check /> : provider.secretStatus === "missing" ? "未接入" : "可用"}</i></button>)}
+            {availableProviders.map((provider) => {const privacyBlocked=privacyMode&&!(["local","rules"] as string[]).includes(provider.mode??"");return <button key={provider.providerId} type="button" disabled={provider.secretStatus === "missing"||privacyBlocked} className={provider.providerId === state.selectedProvider ? "active" : undefined} onClick={() => { setState((current) => ({ ...current, selectedProvider:provider.providerId })); setProviderMenuOpen(false); }}><span><strong>{provider.displayName}</strong><small>{provider.model || (provider.providerId === "mock" ? "确定性规则" : "尚未配置")} · {provider.mode==="local"?"本机":provider.mode==="platform"?"平台":provider.mode==="rules"?"规则":"第三方"}</small></span><i>{provider.providerId === state.selectedProvider ? <Check /> : privacyBlocked?"隐私模式禁用":provider.secretStatus === "missing" ? "未接入" : "可用"}</i></button>})}
             <Button variant="outline" size="sm" onClick={() => { setProviderMenuOpen(false); setOpen(false); router.push("/ai-settings"); }}>管理或接入模型<ChevronRight data-icon="inline-end" /></Button>
           </section>}
 
           <div className="assistant-context-bar">
             <div><span>当前</span><strong>{context.label}</strong></div>
-            <span>{currentProvider?.model || "规则计算"}</span>
+            <span>{currentProvider?.model || "规则计算"} · {currentProvider?.privacyLabel??"处理位置待核对"}</span>
           </div>
 
           <div className="assistant-messages" role="log" aria-live="polite" aria-label="AI 助手对话记录">
@@ -281,7 +287,7 @@ export function GlobalAIAssistantProvider({ children }: { children: React.ReactN
                 </div>
               </article>
             ))}
-            {sending && <article className="assistant-message system_status"><span className="assistant-message-icon"><Sparkles /></span><div><p>正在理解你的问题……</p></div></article>}
+            {sending && <article className="assistant-message system_status"><span className="assistant-message-icon"><Sparkles /></span><div><p>正在理解问题并等待工具结果……</p><Button variant="outline" size="sm" onClick={()=>requestControllerRef.current?.abort()}><Square data-icon="inline-start"/>取消生成</Button></div></article>}
             <div ref={messageEndRef} />
           </div>
 

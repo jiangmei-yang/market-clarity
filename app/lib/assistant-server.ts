@@ -77,6 +77,7 @@ function responsePayload(input: {
     preview:input.preview??null,data:input.data??null,suggested_actions:input.suggestedActions??[],
     requires_confirmation:input.requiresConfirmation??false,fallback_available:input.fallbackAvailable??false,
     disclaimer:"本工具仅用于投资研究与风险检查，不构成投资建议、收益承诺或买卖建议。",
+    provider_mode:input.provider.mode,data_processing:input.provider.privacyLabel,
   };
   return {...result,message:{type:input.type,content:input.content,preview:input.preview}};
 }
@@ -157,7 +158,9 @@ export async function handleAssistantMessage(input: {
   const route = input.route?.startsWith("/") ? input.route : "/";
   const context = pageContextFor(route);
   const providerState = await readProviderState();
-  const provider = providerState.providers.find((item)=>item.providerId===input.selected_provider&&item.enabled&&item.connectionStatus==="available")
+  const providerAllowed=(item:ServerAIProviderProfile)=>!providerState.privacyMode||item.mode==="local"||item.mode==="rules";
+  const requested=providerState.providers.find((item)=>item.providerId===input.selected_provider);
+  const provider = providerState.providers.find((item)=>item.providerId===input.selected_provider&&item.enabled&&item.connectionStatus==="available"&&providerAllowed(item))
     ?? providerState.providers.find((item)=>item.isDefault&&item.enabled&&item.connectionStatus==="available")
     ?? providerState.providers.find((item)=>item.providerId==="mock")!;
   const sessionId = input.session_id || `session_${crypto.randomUUID()}`;
@@ -181,7 +184,9 @@ export async function handleAssistantMessage(input: {
   if(tool.clarification) return responsePayload({sessionId,type:"clarification",content:tool.clarification,intent:tool.intent,provider,suggestedActions:["补充代码","打开对应工具"]});
   if(provider.providerId==="mock") {
     if(tool.toolUsed) return responsePayload({sessionId,type:"analysis",content:`已完成确定性检查。${JSON.stringify(tool.data).slice(0,900)}`,intent:tool.intent,provider,toolUsed:tool.toolUsed,data:tool.data,suggestedActions:["查看计算口径","接入真实模型解释"]});
-    return responsePayload({sessionId,type:"error_message",content:"当前使用本地规则模式，AI 自由对话未启用。你仍可使用持仓、ETF 和量化的确定性检查，或接入真实模型。",intent:"conversation",provider,fallbackAvailable:true,suggestedActions:["接入真实模型","继续使用规则版结果"]});
+    const reason=providerState.privacyMode?"本地隐私模式已开启，但当前没有可用的本机模型。":"当前没有可用的真实模型。";
+    const requestedHint=requested&&requested.providerId!=="mock"?` 你选择的 ${requested.displayName} 未连接或不符合当前隐私模式。`:"";
+    return responsePayload({sessionId,type:"error_message",content:`${reason}${requestedHint} 系统没有伪造 AI 回答；持仓、ETF 和量化的确定性检查仍可使用。`,intent:"conversation",provider,fallbackAvailable:true,suggestedActions:["检查本机模型","切换模型","继续使用规则版结果"]});
   }
   try {
     const history=(input.history??[]).slice(-10).filter((item)=>item.content.trim()).map((item)=>({role:item.role,content:item.content.slice(0,1800)}));
@@ -288,7 +293,7 @@ export async function restoreAssistantWorkspaceVersion(configId:string){
 
 export async function assistantSessionSummary() {
   const { activeWorkspace, snapshot } = await snapshotOrDefault();
-  const { providers } = await readProviderState();
+  const { providers, privacyMode } = await readProviderState();
   return {
     session_id: `session_${crypto.randomUUID()}`,
     workspace_id: activeWorkspace.id,
@@ -296,6 +301,7 @@ export async function assistantSessionSummary() {
     can_redo:snapshot.workspaceRedoVersions?.some((item)=>item.workspace.id===activeWorkspace.id)??false,
     providers: providers.map((provider) => { const safe={...provider} as Partial<ServerAIProviderProfile>; delete safe.apiKey; return {...safe,available:provider.enabled&&provider.secretStatus!=="missing"}; }),
     default_provider_id: providers.find((provider) => provider.isDefault)?.providerId ?? "mock",
+    privacy_mode:privacyMode,
   };
 }
 

@@ -1,0 +1,17 @@
+# 平台托管开源模型（OpenAI-compatible HTTPS 推理服务）
+AI_DEFAULT_PROVIDER=builtin
+AI_BUILTIN_BASE_URL=https://your-inference-service.example/v1
+AI_BUILTIN_MODEL=Qwen/Qwen3-8B
+# AI_BUILTIN_API_KEY=
+
+# 本机开发模型；Sites 云端无法访问用户电脑上的 127.0.0.1。
+# OLLAMA_BASE_URL=http://127.0.0.1:11434/v1
+# OLLAMA_MODEL=qwen3:8b
+# VLLM_BASE_URL=http://127.0.0.1:8001/v1
+# VLLM_MODEL=Qwen/Qwen3-8B
+# VLLM_API_KEY=EMPTY
+# LLAMACPP_BASE_URL=http://127.0.0.1:8080/v1
+# LLAMACPP_MODEL=local-gguf
+
+# 个人第三方模型密钥的服务端加密主密钥，仅放入托管平台 Secret。
+# AI_PROVIDER_ENCRYPTION_KEY=

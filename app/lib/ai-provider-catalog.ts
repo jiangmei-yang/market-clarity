@@ -1,7 +1,9 @@
 import { authenticatedOwnerKey, getUserDatabase, readUserSnapshot, writeUserSnapshot, type UserSnapshot } from "./user-snapshot";
 
-export type AIProviderType = "mock" | "compatible" | "openai" | "anthropic";
+export type AIProviderType = "mock" | "compatible" | "openai" | "anthropic" | "ollama" | "vllm" | "llamacpp";
 export type AIAPIMode = "chat" | "responses" | "native";
+export type AIProviderMode = "local" | "platform" | "external" | "rules";
+export type AIConnectionStatus = "available" | "missing_configuration" | "unavailable";
 export type AIProviderCapabilities = {
   conversation: boolean;
   workspaceCommand: boolean;
@@ -10,6 +12,15 @@ export type AIProviderCapabilities = {
   portfolioRisk: boolean;
   quantRule: boolean;
   vision: boolean;
+};
+
+export type AIModelCapabilities = {
+  chat: boolean;
+  stream: boolean;
+  vision: boolean;
+  toolCalling: boolean;
+  jsonMode: boolean;
+  contextWindow: number;
 };
 
 export type AIProviderProfile = {
@@ -25,8 +36,11 @@ export type AIProviderProfile = {
   apiKeyMasked: string;
   secretSource: "none" | "environment" | "encrypted";
   secretStatus: "not_required" | "server_configured" | "missing";
-  connectionStatus: "available" | "missing_configuration";
+  connectionStatus: AIConnectionStatus;
   capabilities: AIProviderCapabilities;
+  modelCapabilities: AIModelCapabilities;
+  mode: AIProviderMode;
+  privacyLabel: string;
   description: string;
   editable: boolean;
 };
@@ -44,7 +58,7 @@ export type AIProviderInput = {
   apiKeyEnv?: string;
 };
 
-type AIUserSnapshot = UserSnapshot & { aiDefaultProviderId?: string; aiTaskRouting?: Record<string, string> };
+type AIUserSnapshot = UserSnapshot & { aiDefaultProviderId?: string; aiTaskRouting?: Record<string, string>; aiPrivacyMode?: boolean };
 type StoredProviderRow = {
   provider_id: string; display_name: string; provider_type: AIProviderType; base_url: string;
   model: string; api_mode: AIAPIMode; enabled: number; capabilities: string;
@@ -56,6 +70,9 @@ const DEFAULT_CAPABILITIES: AIProviderCapabilities = {
   conversation: true, workspaceCommand: true, preTradeCheck: true,
   etfAnalysis: true, portfolioRisk: true, quantRule: true, vision: false,
 };
+const DEFAULT_MODEL_CAPABILITIES: AIModelCapabilities = {
+  chat:true, stream:false, vision:false, toolCalling:true, jsonMode:true, contextWindow:32768,
+};
 
 const configured = (value?: string) => Boolean(value?.trim());
 const bounded = (value: unknown, maximum: number) => typeof value === "string" ? value.trim().slice(0, maximum) : "";
@@ -66,21 +83,35 @@ function normalizeCapabilities(value?: Partial<AIProviderCapabilities>): AIProvi
   return { ...DEFAULT_CAPABILITIES, ...(value ?? {}) };
 }
 
+const keylessProvider = (type:AIProviderType) => ["ollama","vllm","llamacpp"].includes(type);
+const providerMode = (type:AIProviderType, providerId=""):AIProviderMode => type==="mock"?"rules":keylessProvider(type)?"local":providerId==="builtin"?"platform":"external";
+const privacyLabel = (mode:AIProviderMode) => mode==="local"?"模型请求仅发送到已配置的本机推理服务":mode==="platform"?"模型请求由安心看股服务器处理":mode==="rules"?"不调用生成式模型":"内容会发送到所选第三方模型服务";
+
 function platformCatalog(): ServerAIProviderProfile[] {
   const genericHkgai = (process.env.AI_PROVIDER === "compatible" || process.env.AI_PROVIDER === "openai")
     && (process.env.OPENAI_BASE_URL?.includes("hkchat.app") || process.env.AI_DISPLAY_NAME?.toLowerCase() === "hkgai");
   const hkgaiKey = process.env.HKGAI_API_KEY || (genericHkgai ? process.env.OPENAI_API_KEY : "") || "";
   const hkgaiModel = process.env.HKGAI_MODEL || (genericHkgai ? process.env.AI_MODEL : "") || "";
-  const entries: Array<Omit<ServerAIProviderProfile, "isDefault" | "connectionStatus">> = [
-    { providerId:"hkgai_main", displayName:"HKGAI", providerType:"compatible", baseUrl:process.env.HKGAI_BASE_URL||(genericHkgai?process.env.OPENAI_BASE_URL:"")||"https://test-new-api.hkchat.app/v1", model:hkgaiModel, apiMode:"chat", apiKey:hkgaiKey, enabled:true, isPlatformDefault:true, apiKeyMasked:hkgaiKey?"••••••••":"未配置", secretSource:hkgaiKey?"environment":"none", secretStatus:hkgaiKey&&hkgaiModel?"server_configured":"missing", capabilities:DEFAULT_CAPABILITIES, description:"平台默认 · Chat Completions", editable:false },
-    { providerId:"deepseek", displayName:"DeepSeek", providerType:"compatible", baseUrl:process.env.DEEPSEEK_BASE_URL||"https://api.deepseek.com/v1", model:process.env.DEEPSEEK_MODEL||"", apiMode:"chat", apiKey:process.env.DEEPSEEK_API_KEY||"", enabled:true, isPlatformDefault:false, apiKeyMasked:process.env.DEEPSEEK_API_KEY?"••••••••":"未配置", secretSource:process.env.DEEPSEEK_API_KEY?"environment":"none", secretStatus:process.env.DEEPSEEK_API_KEY&&process.env.DEEPSEEK_MODEL?"server_configured":"missing", capabilities:DEFAULT_CAPABILITIES, description:"OpenAI-compatible Chat API", editable:false },
-    { providerId:"openai", displayName:"OpenAI / ChatGPT", providerType:"openai", baseUrl:process.env.OPENAI_DIRECT_BASE_URL||"https://api.openai.com/v1", model:process.env.OPENAI_DIRECT_MODEL||"", apiMode:(process.env.OPENAI_DIRECT_MODE as AIAPIMode)||"chat", apiKey:process.env.OPENAI_DIRECT_API_KEY||"", enabled:true, isPlatformDefault:false, apiKeyMasked:process.env.OPENAI_DIRECT_API_KEY?"••••••••":"未配置", secretSource:process.env.OPENAI_DIRECT_API_KEY?"environment":"none", secretStatus:process.env.OPENAI_DIRECT_API_KEY&&process.env.OPENAI_DIRECT_MODEL?"server_configured":"missing", capabilities:{...DEFAULT_CAPABILITIES,vision:true}, description:"Chat Completions 或 Responses API", editable:false },
-    { providerId:"claude", displayName:"Claude", providerType:"anthropic", baseUrl:process.env.CLAUDE_BASE_URL||"https://api.anthropic.com/v1", model:process.env.CLAUDE_MODEL||"", apiMode:"native", apiKey:process.env.CLAUDE_API_KEY||"", enabled:true, isPlatformDefault:false, apiKeyMasked:process.env.CLAUDE_API_KEY?"••••••••":"未配置", secretSource:process.env.CLAUDE_API_KEY?"environment":"none", secretStatus:process.env.CLAUDE_API_KEY&&process.env.CLAUDE_MODEL?"server_configured":"missing", capabilities:DEFAULT_CAPABILITIES, description:"Anthropic Messages API", editable:false },
-    { providerId:"ollama", displayName:"Ollama", providerType:"compatible", baseUrl:process.env.OLLAMA_BASE_URL||"http://localhost:11434/v1", model:process.env.OLLAMA_MODEL||"", apiMode:"chat", apiKey:"", enabled:true, isPlatformDefault:false, apiKeyMasked:"不需要", secretSource:"none", secretStatus:process.env.OLLAMA_BASE_URL&&process.env.OLLAMA_MODEL?"not_required":"missing", capabilities:DEFAULT_CAPABILITIES, description:"仅适用于服务器可访问的 Ollama", editable:false },
-    { providerId:"custom", displayName:"自定义兼容接口", providerType:"compatible", baseUrl:process.env.CUSTOM_AI_BASE_URL||"", model:process.env.CUSTOM_AI_MODEL||"", apiMode:"chat", apiKey:process.env.CUSTOM_AI_API_KEY||"", enabled:true, isPlatformDefault:false, apiKeyMasked:process.env.CUSTOM_AI_API_KEY?"••••••••":"未配置", secretSource:process.env.CUSTOM_AI_API_KEY?"environment":"none", secretStatus:process.env.CUSTOM_AI_API_KEY&&process.env.CUSTOM_AI_BASE_URL&&process.env.CUSTOM_AI_MODEL?"server_configured":"missing", capabilities:DEFAULT_CAPABILITIES, description:"管理员配置的兼容接口", editable:false },
-    { providerId:"mock", displayName:"Mock / 本地规则模式", providerType:"mock", baseUrl:"", model:"mock", apiMode:"chat", apiKey:"", enabled:true, isPlatformDefault:false, apiKeyMasked:"不需要", secretSource:"none", secretStatus:"not_required", capabilities:{...DEFAULT_CAPABILITIES,conversation:false}, description:"确定性工具仍可用；AI 自由对话未启用", editable:false },
+  const builtinUrl=process.env.AI_BUILTIN_BASE_URL||""; const builtinModel=process.env.AI_BUILTIN_MODEL||""; const builtinKey=process.env.AI_BUILTIN_API_KEY||"";
+  const defaultProvider=process.env.AI_DEFAULT_PROVIDER||"builtin";
+  const base=(providerId:string,providerType:AIProviderType,overrides:Partial<ServerAIProviderProfile>={})=>({
+    providerId,providerType,apiMode:"chat" as AIAPIMode,apiKey:"",enabled:true,isDefault:false,isPlatformDefault:defaultProvider===providerId,
+    apiKeyMasked:"不需要",secretSource:"none" as const,secretStatus:"not_required" as const,capabilities:DEFAULT_CAPABILITIES,
+    modelCapabilities:DEFAULT_MODEL_CAPABILITIES,mode:providerMode(providerType,providerId),privacyLabel:privacyLabel(providerMode(providerType,providerId)),editable:false,...overrides,
+  });
+  const entries: Array<Omit<ServerAIProviderProfile, "connectionStatus">> = [
+    base("builtin","compatible",{displayName:"平台内置模型",baseUrl:builtinUrl,model:builtinModel,apiKey:builtinKey,apiKeyMasked:builtinKey?"••••••••":"平台托管",secretSource:builtinKey?"environment":"none",secretStatus:builtinUrl&&builtinModel?(builtinKey?"server_configured":"not_required"):"missing",description:"用户无需 API Key；由平台托管的开源模型服务"}),
+    base("hkgai_main","compatible",{displayName:"HKGAI",baseUrl:process.env.HKGAI_BASE_URL||(genericHkgai?process.env.OPENAI_BASE_URL:"")||"https://test-new-api.hkchat.app/v1",model:hkgaiModel,apiKey:hkgaiKey,apiKeyMasked:hkgaiKey?"••••••••":"未配置",secretSource:hkgaiKey?"environment":"none",secretStatus:hkgaiKey&&hkgaiModel?"server_configured":"missing",description:"第三方 API · Chat Completions"}),
+    base("deepseek","compatible",{displayName:"DeepSeek",baseUrl:process.env.DEEPSEEK_BASE_URL||"https://api.deepseek.com/v1",model:process.env.DEEPSEEK_MODEL||"",apiKey:process.env.DEEPSEEK_API_KEY||"",apiKeyMasked:process.env.DEEPSEEK_API_KEY?"••••••••":"未配置",secretSource:process.env.DEEPSEEK_API_KEY?"environment":"none",secretStatus:process.env.DEEPSEEK_API_KEY&&process.env.DEEPSEEK_MODEL?"server_configured":"missing",description:"第三方 OpenAI-compatible API"}),
+    base("openai","openai",{displayName:"OpenAI / ChatGPT",baseUrl:process.env.OPENAI_DIRECT_BASE_URL||"https://api.openai.com/v1",model:process.env.OPENAI_DIRECT_MODEL||"",apiMode:(process.env.OPENAI_DIRECT_MODE as AIAPIMode)||"chat",apiKey:process.env.OPENAI_DIRECT_API_KEY||"",apiKeyMasked:process.env.OPENAI_DIRECT_API_KEY?"••••••••":"未配置",secretSource:process.env.OPENAI_DIRECT_API_KEY?"environment":"none",secretStatus:process.env.OPENAI_DIRECT_API_KEY&&process.env.OPENAI_DIRECT_MODEL?"server_configured":"missing",capabilities:{...DEFAULT_CAPABILITIES,vision:true},modelCapabilities:{...DEFAULT_MODEL_CAPABILITIES,vision:true},description:"第三方 Chat Completions 或 Responses API"}),
+    base("claude","anthropic",{displayName:"Claude",baseUrl:process.env.CLAUDE_BASE_URL||"https://api.anthropic.com/v1",model:process.env.CLAUDE_MODEL||"",apiMode:"native",apiKey:process.env.CLAUDE_API_KEY||"",apiKeyMasked:process.env.CLAUDE_API_KEY?"••••••••":"未配置",secretSource:process.env.CLAUDE_API_KEY?"environment":"none",secretStatus:process.env.CLAUDE_API_KEY&&process.env.CLAUDE_MODEL?"server_configured":"missing",description:"第三方 Anthropic Messages API"}),
+    base("ollama","ollama",{displayName:"Ollama 本机模型",baseUrl:process.env.OLLAMA_BASE_URL||"http://127.0.0.1:11434/v1",model:process.env.OLLAMA_MODEL||"",secretStatus:process.env.OLLAMA_MODEL?"not_required":"missing",modelCapabilities:{...DEFAULT_MODEL_CAPABILITIES,toolCalling:process.env.OLLAMA_TOOL_CALLING==="true"},description:"本地部署 · 无需 API Key；不支持原生工具时使用受控 JSON 规划"}),
+    base("vllm","vllm",{displayName:"vLLM 推理服务",baseUrl:process.env.VLLM_BASE_URL||"http://127.0.0.1:8001/v1",model:process.env.VLLM_MODEL||"",apiKey:process.env.VLLM_API_KEY||"",secretStatus:process.env.VLLM_MODEL?"not_required":"missing",modelCapabilities:{...DEFAULT_MODEL_CAPABILITIES,toolCalling:process.env.VLLM_TOOL_CALLING==="true"},description:"本地或私有服务器 · OpenAI-compatible"}),
+    base("llamacpp","llamacpp",{displayName:"llama.cpp 本机模型",baseUrl:process.env.LLAMACPP_BASE_URL||"http://127.0.0.1:8080/v1",model:process.env.LLAMACPP_MODEL||"",secretStatus:process.env.LLAMACPP_MODEL?"not_required":"missing",modelCapabilities:{...DEFAULT_MODEL_CAPABILITIES,toolCalling:false},description:"可选 GGUF 本地推理服务 · 默认使用 JSON 规划"}),
+    base("custom","compatible",{displayName:"自定义兼容接口",baseUrl:process.env.CUSTOM_AI_BASE_URL||"",model:process.env.CUSTOM_AI_MODEL||"",apiKey:process.env.CUSTOM_AI_API_KEY||"",apiKeyMasked:process.env.CUSTOM_AI_API_KEY?"••••••••":"未配置",secretSource:process.env.CUSTOM_AI_API_KEY?"environment":"none",secretStatus:process.env.CUSTOM_AI_API_KEY&&process.env.CUSTOM_AI_BASE_URL&&process.env.CUSTOM_AI_MODEL?"server_configured":"missing",description:"管理员配置的兼容接口"}),
+    base("mock","mock",{displayName:"本地规则模式",baseUrl:"",model:"rules-v1",capabilities:{...DEFAULT_CAPABILITIES,conversation:false},modelCapabilities:{chat:false,stream:false,vision:false,toolCalling:false,jsonMode:false,contextWindow:0},description:"确定性工具可用；不会伪装成生成式 AI"}),
   ];
-  return entries.map((item)=>({...item,isDefault:false,connectionStatus:item.secretStatus==="missing"?"missing_configuration":"available"}));
+  return entries.map((item)=>({...item,connectionStatus:item.secretStatus==="missing"?"missing_configuration":"available"}));
 }
 
 async function ensureProviderTable(db: D1Database) {
@@ -100,6 +131,23 @@ async function ensureProviderTable(db: D1Database) {
     updated_at TEXT NOT NULL,
     PRIMARY KEY (owner_key, provider_id)
   )`).run();
+}
+
+async function ensureModelAuditTable(db:D1Database){
+  await db.prepare(`CREATE TABLE IF NOT EXISTS ai_model_audit (
+    owner_key TEXT NOT NULL, event_id TEXT PRIMARY KEY, provider_id TEXT NOT NULL,
+    model TEXT NOT NULL, status TEXT NOT NULL, latency_ms INTEGER NOT NULL, created_at TEXT NOT NULL
+  )`).run();
+}
+
+async function recordModelAudit(provider:ServerAIProviderProfile,status:"completed"|"failed",latencyMs:number){
+  try{const owner=await authenticatedOwnerKey();if(!owner)return;const db=await getUserDatabase();await ensureModelAuditTable(db);await db.prepare("INSERT INTO ai_model_audit (owner_key,event_id,provider_id,model,status,latency_ms,created_at) VALUES (?,?,?,?,?,?,?)").bind(owner,`model_${crypto.randomUUID()}`,provider.providerId,provider.model,status,latencyMs,new Date().toISOString()).run();}catch{/* Audit failure must not expose prompts, secrets, or break an otherwise valid result. */}
+}
+
+export async function readModelAudit(){
+  const owner=await authenticatedOwnerKey();if(!owner)throw new Error("请先登录");const db=await getUserDatabase();await ensureModelAuditTable(db);
+  const result=await db.prepare("SELECT event_id,provider_id,model,status,latency_ms,created_at FROM ai_model_audit WHERE owner_key=? ORDER BY created_at DESC LIMIT 100").bind(owner).all() as D1Rows<Record<string,unknown>>;
+  return {events:result.results??[]};
 }
 
 async function encryptionKey() {
@@ -135,7 +183,7 @@ function safeEndpoint(raw: string, providerType: AIProviderType) {
   return url.toString().replace(/\/$/, "");
 }
 
-const ENV_KEY_ALLOWLIST = new Set(["HKGAI_API_KEY","DEEPSEEK_API_KEY","OPENAI_DIRECT_API_KEY","CLAUDE_API_KEY","CUSTOM_AI_API_KEY"]);
+const ENV_KEY_ALLOWLIST = new Set(["AI_BUILTIN_API_KEY","HKGAI_API_KEY","DEEPSEEK_API_KEY","OPENAI_DIRECT_API_KEY","CLAUDE_API_KEY","CUSTOM_AI_API_KEY","VLLM_API_KEY"]);
 function referencedEnvironmentSecret(name?: string) {
   const envName=bounded(name,80);
   if(!envName) return "";
@@ -145,7 +193,7 @@ function referencedEnvironmentSecret(name?: string) {
 
 function validateInput(input: AIProviderInput, existing?: ServerAIProviderProfile) {
   const providerType = input.providerType ?? existing?.providerType ?? "compatible";
-  if (!["compatible","openai","anthropic"].includes(providerType)) throw new Error("不支持该模型提供商");
+  if (!["compatible","openai","anthropic","ollama","vllm","llamacpp"].includes(providerType)) throw new Error("不支持该模型提供商");
   const displayName = bounded(input.displayName ?? existing?.displayName, 80);
   const model = bounded(input.model ?? existing?.model, 120);
   const baseUrl = safeEndpoint(bounded(input.baseUrl ?? existing?.baseUrl, 500), providerType);
@@ -165,16 +213,20 @@ async function storedProviders(): Promise<ServerAIProviderProfile[]> {
   return Promise.all((response.results ?? []).map(async(row)=>{
     let apiKey = "";
     try { apiKey = await decryptSecret(row.secret_cipher,row.secret_iv); } catch { /* A rotated encryption key makes the provider unavailable, never exposed. */ }
-    const secretStatus = apiKey ? "server_configured" as const : "missing" as const;
-    return { providerId:row.provider_id,displayName:row.display_name,providerType:row.provider_type,baseUrl:row.base_url,model:row.model,apiMode:row.api_mode,apiKey,enabled:Boolean(row.enabled),isDefault:false,isPlatformDefault:false,apiKeyMasked:apiKey?"••••••••":"未配置",secretSource:apiKey?"encrypted":"none",secretStatus,connectionStatus:apiKey?"available":"missing_configuration",capabilities:normalizeCapabilities(JSON.parse(row.capabilities) as Partial<AIProviderCapabilities>),description:"个人加密模型连接",editable:true };
+    const keyless=keylessProvider(row.provider_type); const secretStatus = apiKey ? "server_configured" as const : keyless ? "not_required" as const : "missing" as const;
+    const mode=providerMode(row.provider_type,row.provider_id);
+    return { providerId:row.provider_id,displayName:row.display_name,providerType:row.provider_type,baseUrl:row.base_url,model:row.model,apiMode:row.api_mode,apiKey,enabled:Boolean(row.enabled),isDefault:false,isPlatformDefault:false,apiKeyMasked:apiKey?"••••••••":keyless?"不需要":"未配置",secretSource:apiKey?"encrypted":"none",secretStatus,connectionStatus:secretStatus==="missing"?"missing_configuration":"available",capabilities:normalizeCapabilities(JSON.parse(row.capabilities) as Partial<AIProviderCapabilities>),modelCapabilities:DEFAULT_MODEL_CAPABILITIES,mode,privacyLabel:privacyLabel(mode),description:keyless?"个人本机推理连接":"个人加密模型连接",editable:true };
   }));
 }
 
 export function providersForSnapshot(snapshot: AIUserSnapshot = {}, userProviders: ServerAIProviderProfile[] = []) {
   const catalog = [...userProviders, ...platformCatalog()];
   const preferred = snapshot.aiDefaultProviderId;
-  const selected = catalog.find((item)=>item.providerId===preferred&&item.connectionStatus==="available")
-    ?? catalog.find((item)=>item.isPlatformDefault&&item.connectionStatus==="available")
+  const allowed=(item:ServerAIProviderProfile)=>!snapshot.aiPrivacyMode||item.mode==="local"||item.mode==="rules";
+  const selected = catalog.find((item)=>item.providerId===preferred&&item.connectionStatus==="available"&&allowed(item))
+    ?? catalog.find((item)=>item.isPlatformDefault&&item.connectionStatus==="available"&&allowed(item))
+    ?? catalog.find((item)=>item.providerId==="builtin"&&item.connectionStatus==="available"&&allowed(item))
+    ?? catalog.find((item)=>item.providerId==="hkgai_main"&&item.connectionStatus==="available"&&!snapshot.aiPrivacyMode)
     ?? catalog.find((item)=>item.providerId==="mock")!;
   return catalog.map((item)=>({...item,isDefault:item.providerId===selected.providerId}));
 }
@@ -194,19 +246,19 @@ export async function readProviderState() {
   if (result.status === "unauthorized") throw new Error("请先登录");
   const snapshot = (result.status === "ready" ? result.snapshot : {}) as AIUserSnapshot;
   const providers = providersForSnapshot(snapshot, await storedProviders());
-  return { snapshot, providers, defaultProviderId:providers.find((item)=>item.isDefault)?.providerId??"mock" };
+  return { snapshot, providers, defaultProviderId:providers.find((item)=>item.isDefault)?.providerId??"mock", privacyMode:Boolean(snapshot.aiPrivacyMode) };
 }
 
 export async function readPublicProviderState() {
-  const { providers, defaultProviderId } = await readProviderState();
-  return { providers:providers.map(toPublicProvider), defaultProviderId };
+  const { providers, defaultProviderId, privacyMode } = await readProviderState();
+  return { providers:providers.map(toPublicProvider), defaultProviderId, privacyMode };
 }
 
 export async function createUserProvider(input: AIProviderInput) {
   const owner = await authenticatedOwnerKey(); if (!owner) throw new Error("请先登录");
   const normalized = validateInput(input); const apiKey = bounded(input.apiKey, 600)||referencedEnvironmentSecret(input.apiKeyEnv);
-  if (!apiKey) throw new Error("请填写 API Key");
-  const secret = await encryptSecret(apiKey); const db = await getUserDatabase(); await ensureProviderTable(db);
+  if (!apiKey && !keylessProvider(normalized.providerType)) throw new Error("请填写 API Key");
+  const secret = apiKey?await encryptSecret(apiKey):{cipher:"",iv:""}; const db = await getUserDatabase(); await ensureProviderTable(db);
   const providerId = `provider_${crypto.randomUUID().replaceAll("-","").slice(0,12)}`; const now = new Date().toISOString();
   await db.prepare(`INSERT INTO ai_provider_profiles (owner_key,provider_id,display_name,provider_type,base_url,model,api_mode,enabled,capabilities,secret_cipher,secret_iv,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .bind(owner,providerId,normalized.displayName,normalized.providerType,normalized.baseUrl,normalized.model,normalized.apiMode,normalized.enabled?1:0,JSON.stringify(normalized.capabilities),secret.cipher,secret.iv,now,now).run();
@@ -237,9 +289,23 @@ export async function setUserDefaultProvider(providerId: string) {
   const { snapshot, providers } = await readProviderState(); const target = providers.find((item)=>item.providerId===providerId);
   if (!target) throw new Error("没有找到该模型");
   if (target.connectionStatus!=="available") throw new Error("该模型尚未完成服务器端配置");
+  if (snapshot.aiPrivacyMode && !["local","rules"].includes(target.mode)) throw new Error("本地隐私模式已开启，不能切换到外部或云端模型");
   const routing = { conversation:providerId,workspace_command:providerId,trade_review:providerId,pre_trade_check:providerId,etf_analysis:providerId,portfolio_risk:providerId,quant_rule:providerId,metric_explanation:providerId };
   await writeUserSnapshot({...snapshot,aiDefaultProviderId:providerId,aiTaskRouting:routing});
   return { success:true,provider_id:providerId,model:target.model,message:"默认模型已切换" };
+}
+
+export async function setAIPrivacyMode(enabled:boolean) {
+  const {snapshot,providers}=await readProviderState();
+  const next={...snapshot,aiPrivacyMode:enabled};
+  if(enabled){
+    const current=providers.find((item)=>item.isDefault);
+    if(current&&!(["local","rules"] as AIProviderMode[]).includes(current.mode)){
+      next.aiDefaultProviderId=providers.find((item)=>item.mode==="local"&&item.connectionStatus==="available")?.providerId??"mock";
+    }
+  }
+  await writeUserSnapshot(next);
+  return {success:true,privacy_mode:enabled,default_provider_id:next.aiDefaultProviderId??"platform_default",message:enabled?"本地隐私模式已开启；不会调用外部模型":"本地隐私模式已关闭"};
 }
 
 function providerHttpError(status: number, stage = "连接") {
@@ -253,9 +319,9 @@ function providerHttpError(status: number, stage = "连接") {
 
 export async function discoverUnsavedProviderModels(input: AIProviderInput) {
   const providerType = input.providerType ?? "compatible";
-  if (!["compatible","openai","anthropic"].includes(providerType)) throw new Error("当前提供商不支持自动获取模型");
+  if (!["compatible","openai","anthropic","ollama","vllm","llamacpp"].includes(providerType)) throw new Error("当前提供商不支持自动获取模型");
   const baseUrl = safeEndpoint(bounded(input.baseUrl,500),providerType);
-  const apiKey = bounded(input.apiKey,600); if(!apiKey) throw new Error("请先填写 API Key，再自动获取模型");
+  const apiKey = bounded(input.apiKey,600); if(!apiKey&&!keylessProvider(providerType)) throw new Error("请先填写 API Key，再自动获取模型");
   const controller=new AbortController(); const timer=setTimeout(()=>controller.abort(),12_000);
   try {
     const headers:Record<string,string>={accept:"application/json"};
@@ -272,25 +338,38 @@ export async function discoverUnsavedProviderModels(input: AIProviderInput) {
   } finally {clearTimeout(timer);}
 }
 
-export async function callAIProvider(provider: ServerAIProviderProfile, messages: Array<{role:"system"|"user"|"assistant";content:string}>, maxTokens=500) {
+export type ModelChatResult={content:string;provider:string;model:string;usage:{promptTokens:number;completionTokens:number;totalTokens:number};toolCalls:unknown[];finishReason:string;latencyMs:number};
+
+export async function chatWithProvider(provider: ServerAIProviderProfile, messages: Array<{role:"system"|"user"|"assistant";content:string}>, maxTokens=500):Promise<ModelChatResult> {
   const controller = new AbortController(); const timer = setTimeout(()=>controller.abort(),20_000);
+  const started=Date.now();
   try {
     if (provider.providerType==="anthropic") {
       const system = messages.filter((item)=>item.role==="system").map((item)=>item.content).join("\n");
       const response = await fetch(`${provider.baseUrl.replace(/\/$/,"")}/messages`,{method:"POST",redirect:"error",signal:controller.signal,headers:{"content-type":"application/json","x-api-key":provider.apiKey,"anthropic-version":"2023-06-01"},body:JSON.stringify({model:provider.model,max_tokens:maxTokens,system,messages:messages.filter((item)=>item.role!=="system")})});
       if (!response.ok) throw providerHttpError(response.status);
-      const payload = await response.json() as {content?:Array<{type?:string;text?:string}>}; return payload.content?.find((item)=>item.type==="text")?.text?.trim()||"";
+      const payload = await response.json() as {content?:Array<{type?:string;text?:string}>;usage?:{input_tokens?:number;output_tokens?:number};stop_reason?:string};
+      const promptTokens=payload.usage?.input_tokens??0,completionTokens=payload.usage?.output_tokens??0;
+      const result={content:payload.content?.find((item)=>item.type==="text")?.text?.trim()||"",provider:provider.providerId,model:provider.model,usage:{promptTokens,completionTokens,totalTokens:promptTokens+completionTokens},toolCalls:[] as unknown[],finishReason:payload.stop_reason??"stop",latencyMs:Date.now()-started};await recordModelAudit(provider,"completed",result.latencyMs);return result;
     }
     if (provider.apiMode==="responses") {
       const response = await fetch(`${provider.baseUrl.replace(/\/$/,"")}/responses`,{method:"POST",redirect:"error",signal:controller.signal,headers:{"content-type":"application/json",authorization:`Bearer ${provider.apiKey}`},body:JSON.stringify({model:provider.model,input:messages,max_output_tokens:maxTokens})});
       if (!response.ok) throw providerHttpError(response.status);
-      const payload = await response.json() as {output_text?:string;output?:Array<{content?:Array<{text?:string}>}>}; return payload.output_text?.trim()||payload.output?.flatMap((item)=>item.content??[]).map((item)=>item.text??"").join("").trim()||"";
+      const payload = await response.json() as {output_text?:string;output?:Array<{content?:Array<{text?:string}>}>;usage?:{input_tokens?:number;output_tokens?:number;total_tokens?:number}};
+      const promptTokens=payload.usage?.input_tokens??0,completionTokens=payload.usage?.output_tokens??0;
+      const result={content:payload.output_text?.trim()||payload.output?.flatMap((item)=>item.content??[]).map((item)=>item.text??"").join("").trim()||"",provider:provider.providerId,model:provider.model,usage:{promptTokens,completionTokens,totalTokens:payload.usage?.total_tokens??promptTokens+completionTokens},toolCalls:[] as unknown[],finishReason:"stop",latencyMs:Date.now()-started};await recordModelAudit(provider,"completed",result.latencyMs);return result;
     }
     const headers:Record<string,string>={"content-type":"application/json"}; if(provider.apiKey) headers.authorization=`Bearer ${provider.apiKey}`;
     const response = await fetch(`${provider.baseUrl.replace(/\/$/,"")}/chat/completions`,{method:"POST",redirect:"error",signal:controller.signal,headers,body:JSON.stringify({model:provider.model,messages,temperature:0.2,max_tokens:maxTokens})});
     if (!response.ok) throw providerHttpError(response.status);
-    const payload = await response.json() as {choices?:Array<{message?:{content?:string}}>}; return payload.choices?.[0]?.message?.content?.trim()||"";
-  } finally { clearTimeout(timer); }
+    const payload = await response.json() as {choices?:Array<{message?:{content?:string;tool_calls?:unknown[]};finish_reason?:string}>;usage?:{prompt_tokens?:number;completion_tokens?:number;total_tokens?:number}};
+    const choice=payload.choices?.[0]; const promptTokens=payload.usage?.prompt_tokens??0,completionTokens=payload.usage?.completion_tokens??0;
+    const result={content:choice?.message?.content?.trim()||"",provider:provider.providerId,model:provider.model,usage:{promptTokens,completionTokens,totalTokens:payload.usage?.total_tokens??promptTokens+completionTokens},toolCalls:choice?.message?.tool_calls??[],finishReason:choice?.finish_reason??"stop",latencyMs:Date.now()-started};await recordModelAudit(provider,"completed",result.latencyMs);return result;
+  } catch(error){await recordModelAudit(provider,"failed",Date.now()-started);throw error;} finally { clearTimeout(timer); }
+}
+
+export async function callAIProvider(provider: ServerAIProviderProfile, messages: Array<{role:"system"|"user"|"assistant";content:string}>, maxTokens=500) {
+  return (await chatWithProvider(provider,messages,maxTokens)).content;
 }
 
 async function connectionResult(provider: ServerAIProviderProfile) {
@@ -308,7 +387,16 @@ export async function testProviderConnection(providerId: string) {
 }
 
 export async function testUnsavedProvider(input: AIProviderInput) {
-  const normalized=validateInput(input); const apiKey=bounded(input.apiKey,600); if(!apiKey) throw new Error("请填写 API Key");
-  const provider:ServerAIProviderProfile={providerId:"unsaved",...normalized,apiKey,isDefault:false,isPlatformDefault:false,apiKeyMasked:"••••••••",secretSource:"encrypted",secretStatus:"server_configured",connectionStatus:"available",description:"待保存连接",editable:true};
+  const normalized=validateInput(input); const apiKey=bounded(input.apiKey,600); if(!apiKey&&!keylessProvider(normalized.providerType)) throw new Error("请填写 API Key");
+  const mode=providerMode(normalized.providerType,"unsaved");
+  const provider:ServerAIProviderProfile={providerId:"unsaved",...normalized,apiKey,isDefault:false,isPlatformDefault:false,apiKeyMasked:apiKey?"••••••••":"不需要",secretSource:apiKey?"encrypted":"none",secretStatus:apiKey?"server_configured":"not_required",connectionStatus:"available",modelCapabilities:DEFAULT_MODEL_CAPABILITIES,mode,privacyLabel:privacyLabel(mode),description:"待保存连接",editable:true};
   return connectionResult(provider);
+}
+
+export async function localModelInventory() {
+  const {providers}=await readProviderState();
+  return Promise.all(providers.filter((item)=>item.mode==="local").map(async(provider)=>{
+    const result=await testProviderConnection(provider.providerId);
+    return {provider_id:provider.providerId,name:provider.displayName,model:provider.model||"未指定",status:result.success?"ready":provider.model?"unavailable":"not_installed",installed:Boolean(provider.model),disk_usage:null,memory_requirement:"请查看模型发布页",tool_calling_supported:provider.modelCapabilities.toolCalling,vision_supported:provider.modelCapabilities.vision,installation_command:provider.providerType==="ollama"&&provider.model?`ollama pull ${provider.model}`:null,message:result.message};
+  }));
 }
