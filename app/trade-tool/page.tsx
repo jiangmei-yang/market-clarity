@@ -1,7 +1,11 @@
 import { ProductToolShell } from "@/app/components/product-tool-shell";
 import { TradeReviewWorkspace } from "@/app/components/trade-review-workspace";
+import { requireChatGPTUser } from "@/app/chatgpt-auth";
 
-export default function TradeToolPage() {
+export const dynamic = "force-dynamic";
+
+export default async function TradeToolPage() {
+  await requireChatGPTUser("/trade-tool");
   return (
     <ProductToolShell
       active="trade"

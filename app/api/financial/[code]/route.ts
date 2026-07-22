@@ -57,7 +57,8 @@ async function publicFinancialHealth(code: string, signal: AbortSignal) {
     return {
       report_date: dateLabel(rawDate),
       revenue: i["营业总收入"] ?? i["营业收入"] ?? null,
-      net_profit: i["净利润"] ?? i["归属于母公司所有者的净利润"] ?? null,
+      net_profit: i["归属于母公司所有者的净利润"] ?? i["归属于母公司股东的净利润"] ?? i["净利润"] ?? null,
+      deducted_net_profit: i["扣除非经常性损益后的净利润"] ?? i["扣除非经常性损益后归属于母公司所有者的净利润"] ?? null,
       operating_cash_flow: c["经营活动产生的现金流量净额"] ?? null,
       accounts_receivable: b["应收账款"] ?? b["应收票据及应收账款"] ?? null,
       inventory: b["存货"] ?? null,
@@ -72,6 +73,7 @@ async function publicFinancialHealth(code: string, signal: AbortSignal) {
   const prior = periods.find((period) => period.report_date === priorDate);
   const revenueGrowth = change(latest.revenue, prior?.revenue ?? null);
   const profitGrowth = change(latest.net_profit, prior?.net_profit ?? null);
+  const deductedProfitGrowth = change(latest.deducted_net_profit, prior?.deducted_net_profit ?? null);
   const cashConversion = latest.operating_cash_flow !== null && latest.net_profit !== null && latest.net_profit > 0 ? latest.operating_cash_flow / latest.net_profit : null;
   const receivableGrowth = change(latest.accounts_receivable, prior?.accounts_receivable ?? null);
   const inventoryGrowth = change(latest.inventory, prior?.inventory ?? null);
@@ -106,7 +108,7 @@ async function publicFinancialHealth(code: string, signal: AbortSignal) {
   const publicPeriods = periods.slice(-8).reverse().map((period) => ({ ...period, debt_ratio: period.total_assets && period.total_liabilities !== null ? period.total_liabilities / period.total_assets * 100 : null }));
   return {
     code, name: code, report_date: latest.report_date,
-    headline: { revenue: latest.revenue, revenue_yoy: revenueGrowth, net_profit: latest.net_profit, profit_yoy: profitGrowth, roe: null, operating_cash_flow: latest.operating_cash_flow, cash_conversion: cashConversion, debt_ratio: debtRatio },
+    headline: { revenue: latest.revenue, revenue_yoy: revenueGrowth, net_profit: latest.net_profit, profit_yoy: profitGrowth, deducted_net_profit: latest.deducted_net_profit, deducted_profit_yoy: deductedProfitGrowth, roe: null, operating_cash_flow: latest.operating_cash_flow, cash_conversion: cashConversion, debt_ratio: debtRatio },
     checks, periods: publicPeriods,
     coverage: { known_checks: checks.filter((item) => item.state !== "unknown").length, total_checks: checks.length },
     data_status: { source: "新浪财经公开财务报表", indicator_source: null, is_demo: false, updated_at: new Date().toISOString(), message: "三张公开报表按相同报告日合并；季度累计值不可直接与上一季度比较。" },

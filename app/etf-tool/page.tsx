@@ -1,7 +1,11 @@
 import { ETFWorkspace } from "@/app/components/etf-workspace";
 import { ProductToolShell } from "@/app/components/product-tool-shell";
+import { requireChatGPTUser } from "@/app/chatgpt-auth";
 
-export default function ETFToolPage() {
+export const dynamic = "force-dynamic";
+
+export default async function ETFToolPage() {
+  await requireChatGPTUser("/etf-tool");
   return (
     <ProductToolShell
       active="etf"

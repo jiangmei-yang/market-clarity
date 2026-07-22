@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 
 type TradeRecord = { date: string; code: string; name: string; direction: "买入" | "卖出"; price: number; quantity: number; amount: number; fee: number };
-type Lot = { quantity: number; unitCost: number };
+type Lot = { quantity: number; unitCost: number; date: string };
+type FifoMatch = { code: string; name: string; buy_date: string; sell_date: string; matched_quantity: number; buy_unit_cost: number; net_sell_price: number; realized_pnl: number };
 type Position = {
   code: string; name: string; trade_count: number; total_buy_amount: number; total_sell_amount: number;
   total_buy_quantity: number; total_sell_quantity: number; fees: number; realized_pnl: number;
@@ -70,13 +71,14 @@ function attribute(records: TradeRecord[]) {
   const lots = new Map<string, Lot[]>();
   const positions = new Map<string, Position>();
   const unmatched_sell: Array<{ code: string; date: string; quantity: number }> = [];
+  const fifo_matches: FifoMatch[] = [];
   for (const record of records) {
     const item = positions.get(record.code) ?? { code: record.code, name: record.name, trade_count: 0, total_buy_amount: 0, total_sell_amount: 0, total_buy_quantity: 0, total_sell_quantity: 0, fees: 0, realized_pnl: 0, net_quantity: 0, cost_basis: 0 };
     item.name = record.name; item.trade_count += 1; item.fees += record.fee;
     const codeLots = lots.get(record.code) ?? [];
     if (record.direction === "买入") {
       item.total_buy_amount += record.amount; item.total_buy_quantity += record.quantity;
-      codeLots.push({ quantity: record.quantity, unitCost: (record.amount + record.fee) / record.quantity });
+      codeLots.push({ quantity: record.quantity, unitCost: (record.amount + record.fee) / record.quantity, date: record.date });
     } else {
       item.total_sell_amount += record.amount; item.total_sell_quantity += record.quantity;
       let remaining = record.quantity;
@@ -84,7 +86,9 @@ function attribute(records: TradeRecord[]) {
       while (remaining > 1e-9 && codeLots.length) {
         const lot = codeLots[0];
         const matched = Math.min(remaining, lot.quantity);
-        item.realized_pnl += (netSellPrice - lot.unitCost) * matched;
+        const realized = (netSellPrice - lot.unitCost) * matched;
+        item.realized_pnl += realized;
+        fifo_matches.push({ code: record.code, name: record.name, buy_date: lot.date, sell_date: record.date, matched_quantity: round(matched, 6), buy_unit_cost: round(lot.unitCost, 4), net_sell_price: round(netSellPrice, 4), realized_pnl: round(realized) });
         lot.quantity -= matched; remaining -= matched;
         if (lot.quantity <= 1e-9) codeLots.shift();
       }
@@ -109,7 +113,8 @@ function attribute(records: TradeRecord[]) {
     total_buy_amount: round(items.reduce((sum, item) => sum + item.total_buy_amount, 0)),
     total_sell_amount: round(items.reduce((sum, item) => sum + item.total_sell_amount, 0)),
     realized_pnl: round(items.reduce((sum, item) => sum + item.realized_pnl, 0)),
-    total_fees: round(items.reduce((sum, item) => sum + item.fees, 0)), unmatched_sell,
+    total_fees: round(items.reduce((sum, item) => sum + item.fees, 0)), unmatched_sell, fifo_matches,
+    timeline: records,
   };
 }
 
@@ -130,7 +135,7 @@ export async function POST(request: Request) {
     const flagText = risk_flags.length ? `需要复核：${risk_flags.map((item) => `${item.label}：${item.detail}`).join(" ")}` : "当前记录未触发预设的集中度、频繁交易或数据完整性信号。";
     return NextResponse.json({
       record_count: parsed.records.length, parse_errors: parsed.errors, attribution, risk_flags,
-      report: `交易复盘摘要\n记录显示总买入 ${attribution.total_buy_amount.toFixed(2)} 元、总卖出 ${attribution.total_sell_amount.toFixed(2)} 元。\n当前仍有 ${attribution.active_positions} 个标的存在未匹配完的买入数量；按 FIFO 匹配的已实现盈亏为 ${attribution.realized_pnl.toFixed(2)} 元。\n${flagText}\n本工具仅用于持仓分析和交易复盘参考，不构成投资建议、收益承诺或买卖建议。`,
+      report: `交易复盘摘要\n记录显示总买入 ${attribution.total_buy_amount.toFixed(2)} 元、总卖出 ${attribution.total_sell_amount.toFixed(2)} 元。\n当前仍有 ${attribution.active_positions} 个标的保留未卖出的买入批次；按 FIFO 匹配的已实现盈亏为 ${attribution.realized_pnl.toFixed(2)} 元。\n${flagText}\n本工具仅用于持仓分析和交易复盘参考，不构成投资建议、收益承诺或买卖建议。`,
       data_status: { mode: "transaction_file", notice: "已实现盈亏仅按本次导入记录和 FIFO 计算；未保存 CSV，未接入当前市价，因此不计算未实现盈亏。" },
     });
   } catch (error) {
