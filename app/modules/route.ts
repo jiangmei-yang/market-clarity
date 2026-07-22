@@ -1,0 +1,1 @@
+import {NextResponse} from "next/server";import {DASHBOARD_MODULE_REGISTRY} from "@/app/lib/dashboard-system";export async function GET(){return NextResponse.json({modules:DASHBOARD_MODULE_REGISTRY});}

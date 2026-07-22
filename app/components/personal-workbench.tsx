@@ -22,6 +22,8 @@ import {
   type PrecheckResult, type SocialAnalysis, type Workspace, type WorkspaceTheme,
 } from "../lib/personal-workbench";
 import type { AIProviderProfile } from "../lib/ai-provider-catalog";
+import { normalizeDashboardWorkspace } from "../lib/dashboard-system";
+import { DashboardEditor } from "./dashboard-editor";
 
 type Surface = "home" | "profile" | "opportunity" | "workspace" | "portfolio" | "ai-settings";
 type Holding = { name: string; value: number; industry?: string };
@@ -46,7 +48,7 @@ const nav = [
 
 const percent = (value: number) => `${(value * 100).toFixed(value * 100 % 1 ? 1 : 0)}%`;
 const currency = (value: number) => new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY", maximumFractionDigits: 0 }).format(value);
-const normalizeWorkspace = (workspace: Workspace): Workspace => ({
+const normalizeWorkspace = (workspace: Workspace): Workspace => normalizeDashboardWorkspace({
   ...workspace, description: workspace.description ?? "按自己的研究流程调整",
   explanationLevel: workspace.explanationLevel ?? "beginner", preferredAssets: workspace.preferredAssets ?? [], preferredSectors: workspace.preferredSectors ?? [],
   alertFrequency: workspace.alertFrequency === ("realtime" as Workspace["alertFrequency"]) ? "event_based" : workspace.alertFrequency,
@@ -93,20 +95,6 @@ export function PersonalWorkbench({ surface, authenticatedUser, initialAIProvide
     } catch { setStatus("local"); }
   }, [snapshot]);
 
-  const saveWorkspace = (updated: Workspace, changes: string[] = ["手动保存工作台设置"]) => persist({
-    workspaces: workspaces.map((item) => item.id === updated.id ? updated : item), activeWorkspaceId: updated.id,
-    workspaceVersions: [...(snapshot.workspaceVersions ?? []), { configId: `config-${Date.now()}`, workspace: activeWorkspace, createdAt: new Date().toISOString() }].slice(-50),
-    workspaceAudit: [...(snapshot.workspaceAudit ?? []), { commandId: `cmd-${Date.now()}`, intent: "update_workspace", proposedChanges: changes, status: "applied" as const, createdAt: new Date().toISOString(), confirmedAt: new Date().toISOString() }].slice(-200),
-  });
-
-  const undoWorkspace = () => {
-    const versions = snapshot.workspaceVersions ?? [];
-    const index = versions.findLastIndex((item) => item.workspace.id === activeWorkspace.id);
-    if (index < 0) return Promise.resolve();
-    const restored = versions[index].workspace;
-    return persist({ workspaces: workspaces.map((item) => item.id === restored.id ? restored : item), workspaceVersions: versions.filter((_, itemIndex) => itemIndex !== index), activeWorkspaceId: restored.id, workspaceAudit: [...(snapshot.workspaceAudit ?? []), { commandId: `undo-${Date.now()}`, intent: "restore_previous", proposedChanges: ["恢复上一个已确认版本"], status: "applied" as const, createdAt: new Date().toISOString(), confirmedAt: new Date().toISOString() }].slice(-200) });
-  };
-
   return (
     <div className="personal-shell" data-theme={activeWorkspace.theme.themeId} data-font-scale={activeWorkspace.theme.fontScale} data-radius={activeWorkspace.theme.radius} data-motion={activeWorkspace.theme.motion}>
       <a className="skip-link" href="#main-content">跳到主要内容</a>
@@ -127,7 +115,7 @@ export function PersonalWorkbench({ surface, authenticatedUser, initialAIProvide
         {surface === "home" && <HomeSurface snapshot={snapshot} profile={profile} workspace={activeWorkspace} aiProviders={aiProviders} />}
         {surface === "profile" && <ProfileSurface profile={profile} rules={snapshot.investmentRules ?? []} onSave={(draft) => persist({ investorProfile: { ...draft.profile, confirmedAt: new Date().toISOString() }, investmentRules: draft.rules })} />}
         {surface === "opportunity" && <OpportunitySurface profile={profile ?? DEFAULT_PROFILE} holdings={snapshot.holdings ?? {}} onSave={(entry) => persist({ opportunityChecks: [entry, ...(snapshot.opportunityChecks ?? [])].slice(0, 20) })} />}
-        {surface === "workspace" && <WorkspaceSurface key={activeWorkspace.id} workspace={activeWorkspace} workspaces={workspaces} canUndo={(snapshot.workspaceVersions ?? []).some((item) => item.workspace.id === activeWorkspace.id)} onSave={saveWorkspace} onUndo={undoWorkspace} onReset={() => saveWorkspace({ ...createWorkspace("长期基本面"), id: activeWorkspace.id }, ["恢复长期基本面默认布局"])} onCreate={(created) => persist({ workspaces: [...workspaces, created], activeWorkspaceId: created.id, workspaceAudit: [...(snapshot.workspaceAudit ?? []), { commandId: `create-${Date.now()}`, intent: "create_workspace", proposedChanges: [`从${created.name}模板新建`], status: "applied" as const, createdAt: new Date().toISOString(), confirmedAt: new Date().toISOString() }].slice(-200) })} onDelete={() => { const kept = workspaces.filter((item) => item.id !== activeWorkspace.id); return persist({ workspaces: kept, activeWorkspaceId: kept[0]?.id, workspaceAudit: [...(snapshot.workspaceAudit ?? []), { commandId: `delete-${Date.now()}`, intent: "remove_workspace", proposedChanges: [`删除工作台：${activeWorkspace.name}`], status: "applied" as const, createdAt: new Date().toISOString(), confirmedAt: new Date().toISOString() }].slice(-200) }); }} />}
+        {surface === "workspace" && <WorkspaceSurface key={activeWorkspace.id} workspace={activeWorkspace} workspaces={workspaces} />}
         {surface === "portfolio" && <PortfolioSurface holdings={snapshot.holdings ?? {}} profile={profile ?? DEFAULT_PROFILE} />}
         {surface === "ai-settings" && <AISettingsSurface key={aiProviders.map((item)=>`${item.providerId}:${item.isDefault}`).join("|")} initialProviders={aiProviders} initialPrivacyMode={aiPrivacyMode} onProvidersChange={setAIProviders} onPrivacyModeChange={setAIPrivacyMode} />}
         <footer className="personal-disclaimer">{DISCLAIMER}</footer>
@@ -163,7 +151,7 @@ function HomeSurface({ snapshot, profile, workspace, aiProviders }: { snapshot: 
     <AIModelHomeCard providers={aiProviders}/>
 
     <section className="personal-module-grid" aria-label="工作台模块">
-      {visible.map((module) => <article key={module.type} className={module.width === "full" ? "full" : undefined}>
+      {visible.map((module) => <article key={(module as {instanceId?:string}).instanceId ?? module.type} className={module.width === "full" ? "full" : undefined}>
         <header><div><span>{MODULE_LABELS[module.type]}</span><small>{module.density === "simple" ? "简洁" : module.density === "professional" ? "专业" : "标准"}</small></div><Link href={moduleHref(module.type)}>查看<ArrowRight /></Link></header>
         {module.type === "recent_alerts" ? <RiskInbox profile={profile} largest={largest} largestWeight={largestWeight} /> : module.type === "portfolio_risk" ? <PortfolioMini total={total} holdings={holdings} largest={largest} largestWeight={largestWeight} profile={profile} /> : module.type === "financial_quality" ? <ModuleEmpty title="尚未选择研究标的" detail="进入股票研究后，可把现金流和利润质量核对结果带回工作台。" action="选择股票" href="/analysis" /> : module.type === "learning_card" ? <LearningMini level={workspace.explanationLevel ?? "beginner"} /> : module.type === "ai_summary" ? <WorkspaceSummaryMini workspace={workspace} /> : module.type === "trade_review" ? <ReviewMini records={snapshot.decisionRecords ?? []} /> : ["social_risk", "opportunity_check"].includes(module.type) ? <ModuleEmpty title="今天还没有检查社交内容" detail="粘贴一段“马上翻倍”之类的说法，系统会标记语言和证据特征。" action="开始检查" href="/opportunity" /> : <ModuleEmpty title={`${MODULE_LABELS[module.type]}暂无数据`} detail={workspace.explanationLevel === "beginner" ? "添加相关资料后，这里会用一句话说明最需要注意的内容。" : "需要相关持仓、交易记录或研究资料后才能计算。"} action="查看数据入口" href={moduleHref(module.type)} />}
       </article>)}
@@ -236,7 +224,9 @@ function OpportunitySurface({ profile, holdings, onSave }: { profile: InvestorPr
 
 function PrecheckCard({ result }: { result: PrecheckResult }) { return <section className="precheck-result"><header><div><span>第 2—4 步 · 规则、组合、待确认风险</span><h2>{result.checks.length ? `${result.checks.length} 项需要你复核` : "未触发已启用规则"}</h2></div><Badge variant={result.canContinue ? "secondary" : "outline"}>{result.canContinue ? "可继续记录" : "先补充信息"}</Badge></header><div className="precheck-numbers"><div><span>计划后单一持仓</span><strong>{percent(result.afterSingleWeight)}</strong><small>第 2 步 · 个人规则</small></div><div><span>计划后行业占比</span><strong>{percent(result.afterSectorWeight)}</strong><small>第 3 步 · 组合影响</small></div><div><span>直接规则冲突</span><strong>{result.violations.length}</strong><small>需逐项确认</small></div></div><div className="precheck-list-heading"><span>第 4 步</span><strong>还有哪些风险需要确认</strong></div>{result.checks.map((item) => <article key={`${item.title}-${item.fact}`}><Badge variant="outline">{item.severity}</Badge><div><strong>{item.title}</strong><span>{item.fact}</span><p>{item.explanation}</p></div></article>)}<div className="personal-questions"><strong>决定前再回答</strong>{result.questions.map((item) => <p key={item}>{item}</p>)}</div><footer><Button variant="outline">加入观察</Button><Button variant="outline">保存分析</Button><Button variant="outline">记录交易理由</Button><Button>稍后再决定</Button></footer></section>; }
 
-function WorkspaceSurface({ workspace, workspaces, canUndo, onSave, onUndo, onReset, onCreate, onDelete }: { workspace: Workspace; workspaces: Workspace[]; canUndo: boolean; onSave: (workspace: Workspace, changes?: string[]) => Promise<void>; onUndo: () => Promise<void>; onReset: () => Promise<void>; onCreate: (workspace: Workspace) => Promise<void>; onDelete: () => Promise<void> }) {
+function WorkspaceSurface({workspace,workspaces}:{workspace:Workspace;workspaces:Workspace[]}) { return <DashboardEditor workspace={workspace} workspaces={workspaces}/>; }
+
+export function LegacyWorkspaceSurface({ workspace, workspaces, canUndo, onSave, onUndo, onReset, onCreate, onDelete }: { workspace: Workspace; workspaces: Workspace[]; canUndo: boolean; onSave: (workspace: Workspace, changes?: string[]) => Promise<void>; onUndo: () => Promise<void>; onReset: () => Promise<void>; onCreate: (workspace: Workspace) => Promise<void>; onDelete: () => Promise<void> }) {
   const [draft, setDraft] = useState(workspace); const [instruction, setInstruction] = useState("把财报模块放到顶部，隐藏复杂 K 线，每周提醒一次持仓风险。"); const [preview, setPreview] = useState<ReturnType<typeof previewWorkspaceChange>>();
   const move = (index: number, direction: -1 | 1) => { const modules = [...draft.modules]; const target = index + direction; if (target < 0 || target >= modules.length) return; [modules[index], modules[target]] = [modules[target], modules[index]]; modules.forEach((item, order) => { item.order = order; }); setDraft({ ...draft, modules, updatedAt: new Date().toISOString() }); };
   const setTheme = (patch: Partial<WorkspaceTheme>) => setDraft({ ...draft, theme: { ...draft.theme, ...patch } });

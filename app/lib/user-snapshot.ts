@@ -15,6 +15,11 @@ export type UserSnapshot = {
   workspaceVersions?: unknown;
   workspaceRedoVersions?: unknown;
   workspaceAudit?: unknown;
+  dashboardVersions?: unknown;
+  dashboardRedoVersions?: unknown;
+  dashboardPrivacy?: unknown;
+  dashboardDataSources?: unknown;
+  dashboardModuleTemplates?: unknown;
   exploratoryPreferences?: unknown;
   agentTasks?: unknown;
   quantTasks?: unknown;
