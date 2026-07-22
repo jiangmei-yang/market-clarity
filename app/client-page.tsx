@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -1139,6 +1139,8 @@ function HoldingsView({ holdings, capital, maxSingleStockValue, maxSingleStockRa
 }
 
 function DecisionView({ stock, action, rules, holdings, priorDecision, researchContext, onEditRules, onDone, onBack }: { stock: Stock; action: TradeAction; rules: UserRules; holdings: HoldingBook; priorDecision?: DecisionResult; researchContext?: ResearchDecisionContext; onEditRules: () => void; onDone: (result: DecisionResult) => void; onBack: () => void }) {
+  const testSessionId=useMemo(()=>crypto.randomUUID(),[]);
+  const testSessionCompleted=useRef(false);
   const currentHolding = holdingValueFor(holdings, stock.code);
   const currentRatio = currentHolding / rules.investableCapital * 100;
   const initialAmount = priorDecision?.stock.code === stock.code ? priorDecision.finalAmount : Math.min(10000, Math.max(1000, rules.singleAmountAlert));
@@ -1157,6 +1159,7 @@ function DecisionView({ stock, action, rules, holdings, priorDecision, researchC
     const timer = window.setInterval(() => setDurationSeconds((seconds) => seconds + 1), 1000);
     return () => window.clearInterval(timer);
   }, []);
+  useEffect(()=>{void fetch("/api/evaluation/user-study",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({eventType:"session",sessionId:testSessionId,status:"started"})});return()=>{if(testSessionCompleted.current)return;const payload=JSON.stringify({eventType:"session",sessionId:testSessionId,status:"abandoned"});if(navigator.sendBeacon)navigator.sendBeacon("/api/evaluation/user-study",new Blob([payload],{type:"application/json"}));else void fetch("/api/evaluation/user-study",{method:"POST",headers:{"content-type":"application/json"},body:payload,keepalive:true});};},[testSessionId]);
   const positionDelta = action === "卖出" ? -Math.min(amount, currentHolding) : action === "继续观察" ? 0 : amount;
   const projectedHolding = Math.max(0, currentHolding + positionDelta);
   const ratio = useMemo(() => Number((projectedHolding / rules.investableCapital * 100).toFixed(1)), [projectedHolding, rules.investableCapital]);
@@ -1224,6 +1227,8 @@ function DecisionView({ stock, action, rules, holdings, priorDecision, researchC
   };
   const completeReview = (result: DecisionResult["result"], finalAmount: number, message: string) => {
     const completedAt = new Date();
+    testSessionCompleted.current=true;
+    void fetch("/api/evaluation/user-study",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({eventType:"session",sessionId:testSessionId,status:"completed",durationSeconds})});
     onDone({ stock, action, originalAmount: initialAmount, finalAmount, result, message, reason, reasonStructure, invalidation: invalid, horizon, reviewedAt: completedAt.toLocaleString("zh-CN", { month: "numeric", day: "2-digit", hour: "2-digit", minute: "2-digit" }), reviewedAtIso: completedAt.toISOString(), ruleSnapshot: rules, issues: [...originalIssues, ...quantIssues], remainingIssues: reviewIssues, scenarioLoss, originalScenarioLoss, durationSeconds, evidence: evidenceCheck, quantVerification: quantVerification ? { ...quantVerification, includedInDecision: true } : undefined });
   };
   return (

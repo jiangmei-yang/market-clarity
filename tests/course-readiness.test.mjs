@@ -87,9 +87,43 @@ test("uses an action-based pricing experiment instead of counting an attitude qu
   const evaluation=read("app/evaluation/page.tsx");
   assert.match(pilot,/priceMonthly:19/);
   assert.match(pilot,/status='joined'/);
+  assert.match(pilot,/pilot_exposures/);
+  assert.match(pilot,/view_count/);
   assert.match(page,/14 天付费测试/);
+  assert.match(page,/event:"view"/);
   assert.match(page,/不会自动扣费/);
   assert.match(evaluation,/不把态度题算作收入/);
+});
+
+test("measures the real task funnel instead of only completed feedback",()=>{
+  const study=read("app/lib/user-study.ts");
+  const decision=read("app/client-page.tsx");
+  const evaluation=read("app/evaluation/page.tsx");
+  assert.match(study,/user_study_sessions/);
+  assert.match(study,/"started"\|"completed"\|"abandoned"/);
+  assert.match(study,/30 minutes/);
+  assert.match(study,/WHEN user_study_sessions\.status='completed' THEN 'completed'/);
+  assert.match(study,/ON CONFLICT\(owner_key,session_key\) DO UPDATE/);
+  assert.match(study,/quick_completed/);
+  assert.match(study,/engaged_completed/);
+  assert.match(decision,/status:"started"/);
+  assert.match(decision,/status:"completed"/);
+  assert.match(decision,/status:"abandoned"/);
+  assert.match(decision,/navigator\.sendBeacon/);
+  assert.match(evaluation,/核心任务漏斗/);
+  assert.match(evaluation,/完成率/);
+  assert.match(evaluation,/转化率/);
+  assert.match(evaluation,/15 秒内快速结束/);
+});
+
+test("documents a reproducible external validation protocol",()=>{
+  const runbook=read("REAL_VALIDATION_RUNBOOK.md");
+  const loop=read("CRITICAL_LOOP_ITERATION_04.md");
+  assert.match(runbook,/15 分钟单人流程/);
+  assert.match(runbook,/不提示点击顺序/);
+  assert.match(runbook,/外部用户样本 ≥ 15/);
+  assert.match(loop,/\*\*90\/100\*\*/);
+  assert.match(loop,/0 位外部参与者/);
 });
 
 test("does not label the initial health check as a retrying failure",()=>{
