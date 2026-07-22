@@ -404,7 +404,8 @@ test("keeps the daily workflow and decision loop in the product source", async (
   assert.match(page, /关键金额仍由确定性代码计算/);
   assert.match(page, /English Beta 尚未开放/);
   assert.match(page, /不连接证券账户/);
-  assert.match(page, /清空全部个人数据/);
+  assert.match(page, /清空持仓、规则和决策/);
+  assert.match(page, /删除我的课程研究记录/);
   assert.match(page, /个人云端空间/);
   assert.match(page, /不可逆散列键/);
   assert.match(page, /\/api\/me\/snapshot/);

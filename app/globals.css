@@ -1171,20 +1171,30 @@ svg { stroke-width: 1.8; }
 .decision-result-actions strong { font-size: 12px; }
 .decision-result-actions span { color: var(--muted-foreground); font-size: 12px; }
 .decision-result-actions > div:last-child { display: flex; gap: 8px; }
-.decision-test-feedback { min-height: 150px; padding: 18px 30px; display: grid; grid-template-columns: minmax(220px, 1.2fr) 120px 156px 104px 104px 110px; align-items: end; gap: 12px 14px; border-top: 1px solid var(--border); background: color-mix(in oklch, var(--secondary), white 72%); }
-.decision-test-feedback > div:first-child { align-self: center; display: flex; flex-direction: column; gap: 4px; }
-.decision-test-feedback > div:first-child > span, .decision-test-feedback small, .decision-test-feedback label > span, .decision-test-feedback > div:not(:first-child) > span { color: var(--muted-foreground); font-size: 12px; }
-.decision-test-feedback > div:first-child strong { font-size: 14px; }
-.decision-test-feedback label, .decision-test-feedback > div:not(:first-child) { display: flex; flex-direction: column; gap: 6px; }
-.decision-test-feedback input { height: 34px; }
+.decision-test-feedback { padding: 22px 30px; display: grid; gap: 16px; border-top: 1px solid var(--border); background: color-mix(in oklch, var(--secondary), white 72%); }
+.decision-test-feedback > header { display: grid; gap: 4px; }
+.decision-test-feedback > header > span, .decision-test-feedback small, .decision-test-feedback label > span, .feedback-identity-row > div > span, .feedback-binary-grid > div > span { color: var(--muted-foreground); font-size: 12px; }
+.decision-test-feedback > header strong { font-size: 15px; }
+.decision-test-feedback label, .feedback-identity-row > div, .feedback-binary-grid > div { display: flex; flex-direction: column; gap: 7px; }
+.decision-test-feedback input, .decision-test-feedback select { height: 36px; }
+.decision-test-feedback select { padding: 0 10px; border: 1px solid var(--input); border-radius: 7px; background: var(--card); color: var(--foreground); }
+.feedback-identity-row { display: grid; grid-template-columns: 160px minmax(210px,1fr) 156px; gap: 14px; }
 .feedback-score { display: flex; }
-.feedback-score button { width: 30px; height: 34px; border: 1px solid var(--border); border-right: 0; background: var(--card); color: var(--muted-foreground); font-size: 12px; cursor: pointer; }
+.feedback-score button { width: 30px; height: 36px; border: 1px solid var(--border); border-right: 0; background: var(--card); color: var(--muted-foreground); font-size: 12px; cursor: pointer; }
 .feedback-score button:first-child { border-radius: 7px 0 0 7px; }
 .feedback-score button:last-child { border-right: 1px solid var(--border); border-radius: 0 7px 7px 0; }
-.feedback-score button.active, .feedback-choice.active { border-color: var(--primary); background: var(--secondary); color: var(--primary-strong); font-weight: 750; }
-.feedback-choice { height: 34px; border: 1px solid var(--border); border-radius: 7px; background: var(--card); color: var(--muted-foreground); font-size: 12px; cursor: pointer; }
-.decision-test-feedback .feedback-confusion { grid-column: 1 / 6; }
-.decision-test-feedback .feedback-save { grid-column: 6; }
+.feedback-score button.active, .feedback-binary-grid button.active { border-color: var(--primary); background: var(--secondary); color: var(--primary-strong); font-weight: 750; }
+.feedback-risk-explanation { position: relative; }
+.feedback-risk-explanation small { position: absolute; right: 10px; bottom: 10px; }
+.feedback-binary-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; }
+.feedback-binary-grid > div > div { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
+.feedback-binary-grid button { min-height: 36px; border: 1px solid var(--border); background: var(--card); color: var(--muted-foreground); cursor: pointer; }
+.feedback-binary-grid button:first-child { border-radius: 7px 0 0 7px; }
+.feedback-binary-grid button:last-child { margin-left: -1px; border-radius: 0 7px 7px 0; }
+.feedback-consent { flex-direction: row!important; align-items: flex-start; gap: 9px!important; color: var(--muted-foreground); font-size: 12px; }
+.feedback-consent input { width: 16px; height: 16px; margin-top: 1px; }
+.decision-test-feedback > footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.decision-test-feedback > footer > span { color: var(--muted-foreground); font-size: 12px; }
 
 /* Core review copy stays readable at normal desktop distance without reducing density. */
 .decision-focus-heading p { font-size: 12px; line-height: 1.55; }
@@ -1642,7 +1652,8 @@ svg { stroke-width: 1.8; }
   .decision-layout { grid-template-columns: minmax(640px, 1fr) 270px; gap: 14px; padding-right: 14px; }
   .privacy-grid { grid-template-columns: 1fr; }
   .privacy-grid > section:first-child { border-right: 0; border-bottom: 1px solid var(--border); }
-  .decision-test-feedback { grid-template-columns: minmax(210px, 1fr) 112px 156px 100px 100px 104px; padding-inline: 22px; gap: 10px; }
+  .decision-test-feedback { padding-inline: 22px; }
+  .feedback-identity-row { grid-template-columns: 150px minmax(180px,1fr) 156px; }
 }
 
 /* Quant verification extends the research dossier without introducing another visual system. */

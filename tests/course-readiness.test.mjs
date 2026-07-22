@@ -68,7 +68,14 @@ test("runs a transparent 20-case rules baseline and keeps model evidence separat
   assert.match(study, /COUNT\(DISTINCT participant_key\)/);
   assert.match(study, /SHA-256/);
   assert.match(studyRoute, /format.*csv/);
-  assert.match(page, /零样本保持为零/);
+  assert.match(page, /所有问题默认未选择/);
+  assert.match(studyRoute, /export async function DELETE/);
+  assert.match(studyRoute, /confirmed!==true/);
+  assert.match(page, /三类目标用户各 5 位/);
+  const decision = read("app/client-page.tsx");
+  assert.match(decision, /删除我的课程研究记录/);
+  assert.match(decision, /consent:Boolean\(feedback\.consentedAtIso\)/);
+  assert.doesNotMatch(decision, /satisfaction:4/);
 });
 
 test("provides a clearly labelled 90-second teaching walkthrough",()=>{
