@@ -15,7 +15,7 @@ test("keeps deterministic backtest assumptions, data lineage and full risk metri
   const source=await read("../app/lib/quant-research.ts");
   for(const field of ["commissionBps","stampTaxBps","slippageBps","limitHandling","suspensionHandling","dividendHandling","adjustment","benchmark","trainRatio"])assert.match(source,new RegExp(field));
   for(const metric of ["annualizedReturnPct","maxDrawdownPct","volatilityPct","sharpe","winRatePct","profitLossRatio","turnoverPct","costImpactPct","benchmarkReturnPct","longestDrawdownDays"])assert.match(source,new RegExp(metric));
-  assert.match(source,/anxin-backtest-2\.0/);
+  assert.match(source,/anxin-backtest-3\.0/);
   assert.match(source,/历史回测和模拟结果不代表未来收益/);
 });
 

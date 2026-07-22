@@ -9,7 +9,7 @@ type RawItem = { item_title?: string; item_value?: string | number | null };
 type RawReport = { data?: RawItem[] };
 type SinaPayload = { result?: { data?: { report_date?: Array<{ date_value?: string }>; report_list?: Record<string, RawReport> } } };
 type Values = Record<string, number | null>;
-type Period = Values & { report_date: string };
+type Period = {report_date:string;revenue:number|null;net_profit:number|null;deducted_net_profit:number|null;operating_cash_flow:number|null;accounts_receivable:number|null;inventory:number|null;total_assets:number|null;total_liabilities:number|null};
 
 const numeric = (value: unknown) => {
   const number = Number(value);

@@ -6,6 +6,8 @@ export type ToolDefinition={toolId:string;name:string;description:string;categor
 const tool=(toolId:string,name:string,description:string,category:ToolCategory,permissionLevel:PermissionLevel,dataSources:string[],keywords:string[]):ToolDefinition=>({toolId,name,description,category,inputSchema:{goal:"string",context:"object"},outputSchema:{data_status:"string",result:"object",sources:"array"},uiSchema:{surface:"agent_result"},dataSources,permissionLevel,enabled:true,version:"1.0",keywords});
 
 export const TOOL_CATALOG:ToolDefinition[]=[
+  tool("search_capabilities","检索平台能力","从实时 Capability Registry 查询页面、工具、数据源、模型和当前状态","education","safe",["capability_registry"],["平台能做什么","支持哪些","功能","能力","怎么使用"]),
+  tool("get_market_data","读取行情","读取带来源、时间和新鲜度状态的 A 股或 ETF 行情","data","safe",["public_market_data"],["行情","价格","走势","成交量"]),
   tool("get_portfolio","读取当前持仓","读取当前用户已保存的持仓，不连接券商账户","data","safe",["user_portfolio"],["持仓","组合","仓位"]),
   tool("search_stock","搜索股票","搜索 A 股代码和名称","data","safe",["akshare","public_market_data"],["股票","代码","公司"]),
   tool("search_etf","搜索 ETF","搜索公开 ETF 基本信息","data","safe",["public_etf_data"],["ETF","基金"]),
@@ -13,15 +15,26 @@ export const TOOL_CATALOG:ToolDefinition[]=[
   tool("diagnose_etf_overlap","ETF 重复暴露","计算多只 ETF 的底层持仓重合","analysis","safe",["fund_disclosure"],["重复暴露","重合","ETF"]),
   tool("get_financial_report","读取财务报告","读取公开结构化财务字段","data","safe",["public_financial_data"],["财报","现金流","利润","营收"]),
   tool("get_announcement","读取公告","读取交易所或上市公司公开公告","data","safe",["exchange_announcement"],["公告","事件","证据"]),
+  tool("get_news","读取授权新闻","读取当前已授权新闻源；没有授权时明确返回不可用","data","safe",["authorized_news"],["新闻","资讯"]),
+  tool("get_social_content","读取授权社交样本","只读取用户上传或合法授权的社交内容","data","safe",["user_uploaded_social_content"],["社交内容","帖子","讨论"]),
   tool("calculate_portfolio_risk","组合风险计算","计算集中度、行业暴露和仓位风险","risk","safe",["user_portfolio","public_market_data"],["风险","集中度","回撤","行业暴露"]),
   tool("run_trade_attribution","交易归因","使用用户上传的交易记录进行 FIFO 归因","analysis","safe",["user_uploaded_csv"],["复盘","归因","交易记录","盈亏"]),
   tool("run_pretrade_check","交易前检查","检查计划后仓位、理由和退出条件","risk","safe",["user_portfolio","user_input"],["交易前","买入计划","卖出计划","下单前"]),
   tool("analyze_social_content","社交内容风险分析","分析用户主动粘贴或合法接入的社交内容","analysis","safe",["user_uploaded_social_content"],["社交","小红书","雪球","跟风","热点"]),
   tool("explain_metric","解释指标","根据已提供数据用白话解释金融指标","education","safe",["tool_result"],["解释","是什么","指标","术语"]),
+  tool("compare_etf","比较 ETF","比较公开披露、费用和底层暴露，不给买卖指令","analysis","safe",["fund_disclosure"],["比较ETF","对比ETF"]),
+  tool("analyze_industry","行业研究","组合行情、财务和公告工具形成行业研究计划","analysis","safe",["public_market_data","public_financial_data","exchange_announcement"],["研究行业","行业分析"]),
+  tool("detect_financial_anomaly","财报异常检查","用确定性勾稽规则检查现金流、应收、存货和负债","risk","safe",["public_financial_data"],["财报异常","盈利质量","应收","存货"]),
   tool("backtest","历史回测","对已确认的策略和数据区间进行历史模拟","quant","confirm",["public_market_data"],["回测","历史模拟","策略"]),
   tool("dca_simulation","定投模拟","模拟固定周期投入，不连接真实账户","quant","confirm",["public_market_data"],["定投","模拟"]),
   tool("parameter_sensitivity","参数敏感性","比较参数变化对历史模拟结果的影响","quant","confirm",["public_market_data"],["敏感性","参数","稳定性"]),
   tool("create_quant_task","创建量化研究任务","把自然语言目标转换为可确认的策略、数据和工作台配置","quant","confirm",["user_input","strategy_registry"],["量化研究","日频","策略工作台","收盘后分析"]),
+  tool("parse_natural_strategy","解析自然语言策略","把中文策略描述转换为白名单 DSL，并列出歧义、缺失条件和数据要求","quant","safe",["user_input","strategy_registry"],["自然语言策略","策略助手","均线策略","RSI策略","MACD策略","成交量策略","条件提醒"]),
+  tool("validate_strategy_dsl","校验策略 DSL","检查指标白名单、参数完整性、数据依赖和人工确认边界","risk","safe",["user_input","strategy_registry"],["策略校验","DSL","未来函数","策略条件"]),
+  tool("save_natural_strategy","保存自然语言策略","只在用户确认后保存策略版本与调度设置","quant","confirm",["user_input","strategy_registry"],["保存策略","应用策略"]),
+  tool("backtest_natural_strategy","回测自然语言策略","对已确认的可计算日频策略执行 A 股规则与成本约束下的历史核验","quant","confirm",["public_market_data","strategy_registry"],["策略回测","一键回测","回测质量"]),
+  tool("run_saved_strategy","运行已保存策略","使用带时间和来源的数据手动检查策略条件；缓存数据不生成新提醒","quant","confirm",["public_market_data","strategy_registry"],["运行策略","检查条件","策略触发"]),
+  tool("manage_strategy_schedule","管理策略计划","保存日、周、月或事件频率；调度器状态必须单独披露","automation","confirm",["strategy_registry","user_preferences"],["策略监控","策略计划","暂停策略","恢复策略"]),
   tool("list_quant_strategies","浏览策略注册表","读取可组合的策略定义与数据要求","quant","safe",["strategy_registry"],["策略库","有哪些策略","量化策略"]),
   tool("run_quant_backtest","运行量化历史核验","只对已确认配置和真实输入数据运行历史模拟","quant","confirm",["public_market_data"],["量化回测","历史核验"]),
   tool("run_paper_simulation","创建模拟组合","创建与真实持仓严格分离的纸上组合","quant","confirm",["public_market_data"],["模拟组合","纸上交易","虚拟持仓"]),
@@ -43,7 +56,7 @@ export const MODULE_REGISTRY:ModuleDefinition[]=[
   ["social_topics","社交热点主题","analysis","half",["user_uploaded_social_content"]], ["social_heat","热度变化","analysis","half",["user_uploaded_social_content"]], ["social_sentiment","情绪分布","analysis","half",["user_uploaded_social_content"]],
   ["fundamental_verification","基本面核验","analysis","half",["public_financial_data"]], ["valuation_verification","估值核验","analysis","half",["public_market_data"]], ["volume_verification","资金与成交量核验","analysis","half",["public_market_data"]], ["portfolio_overlap","与持仓重合度","risk","half",["user_portfolio"]],
   ["weekly_digest","每周摘要","automation","full",["user_portfolio"]], ["pretrade_checklist","交易前检查","risk","full",["user_input"]], ["term_explainer","术语解释","education","half",["tool_result"]],
-  ["quant_strategy","量化策略","quant","full",["strategy_registry"]], ["quant_backtest","历史模拟","quant","full",["public_market_data"]], ["quant_paper","模拟组合","quant","full",["public_market_data"]], ["quant_risk","量化风险","risk","half",["public_market_data"]], ["quant_sensitivity","参数敏感性","quant","half",["public_market_data"]], ["quant_schedule","研究计划","automation","half",["user_preferences"]], ["quant_audit","量化审计","quant","full",["tool_result"]],
+  ["quant_strategy","量化策略","quant","full",["strategy_registry"]], ["quant_backtest","历史模拟","quant","full",["public_market_data"]], ["quant_paper","模拟组合","quant","full",["public_market_data"]], ["quant_risk","量化风险","risk","half",["public_market_data"]], ["quant_sensitivity","参数敏感性","quant","half",["public_market_data"]], ["quant_schedule","研究计划","automation","half",["user_preferences"]], ["quant_audit","量化审计","quant","full",["tool_result"]], ["strategy_notifications","策略提醒记录","automation","half",["strategy_registry","public_market_data"]],
 ].map(([moduleId,name,category,defaultWidth,requiredSources])=>({moduleId,name,category,defaultWidth,requiredSources,version:"1.0"} as ModuleDefinition));
 
 export const DATA_SOURCE_REGISTRY=[
@@ -54,6 +67,8 @@ export const DATA_SOURCE_REGISTRY=[
   {sourceId:"tool_result",name:"已验证工具结果",available:true,scope:"当前任务工具链"},
   {sourceId:"workspace_registry",name:"工作台配置注册中心",available:true,scope:"当前登录用户"},
   {sourceId:"strategy_registry",name:"量化策略注册中心",available:true,scope:"研究规则定义"},
+  {sourceId:"capability_registry",name:"平台能力知识库",available:true,scope:"从当前工具、模块、页面和模型注册表生成"},
+  {sourceId:"authorized_news",name:"授权新闻源",available:false,scope:"未配置时明确不可用"},
   {sourceId:"public_market_data",name:"公开行情数据",available:true,scope:"以工具返回状态为准"},
   {sourceId:"fund_disclosure",name:"基金公开披露",available:true,scope:"不保证实时"},
   {sourceId:"public_financial_data",name:"公开财务数据",available:true,scope:"以报告期为准"},

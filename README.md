@@ -153,6 +153,51 @@ actions tied to the current ChatGPT user. Leave public content anonymous.
 
 故障控制自动化覆盖在 `tests/failure-control.test.mjs`。本产品不连接券商；任何数据、模型、风控或任务状态异常都不会触发真实交易。
 
+## Goal-to-Workflow Agent 与平台能力 RAG
+
+全局助手和 `/agent` 不再依赖一组固定问答分支。自然语言目标会先被拆成数据需求、分析需求、工具需求、界面修改、工作流修改、自动化、风格、风险等级和缺失信息，再从 Tool、Module、Data Source、Workflow 与 Strategy Registry 组合执行计划。真实模型可用时负责语义规划；不可用时只执行可审计的本地能力检索和确定性工具，不伪造“AI 已完成”。
+
+平台能力知识库由实际 Registry 和路由动态建立，不靠手写宣传文案。每项能力包含状态、入口、输入输出、依赖、限制、权限、版本和核验时间。相关接口：
+
+- `GET /capabilities?q=...`：检索当前真实能力；
+- `GET /capabilities/{id}`：读取能力详情；
+- `GET /capabilities/health`：检查知识库覆盖；
+- `POST /capabilities/reindex`：确认后从 Registry 重新构建索引；
+- `POST /goal/interpret`：把任意目标转换成 Agent 任务。
+
+工作台、规则、提醒和模拟组合仍必须预览并由用户确认；交易执行工具保持禁止状态。
+
+## A 股低频策略可信度门禁
+
+`/quant` 现在把回测结果与“可信度”同时展示。引擎在绘制收益曲线前检查：
+
+- 日期、重复行、异常价格、长时间缺口、复权口径和数据新鲜度；
+- A 股 T+1、涨跌停、停牌、手续费、印花税、滑点和最小交易单位口径；标准化净值回测会明确说明尚未模拟实际份额取整；
+- `available_at` 与策略参数中的未来函数风险；
+- 多标的股票池的历史成分、退市标的、代码变化和上市日期，缺少时明确标记幸存者偏差；
+- 样本内 / 样本外、参数敏感性、基准和成本。
+
+收盘信号统一延迟到下一交易日执行；停牌、涨停买入和跌停卖出会记录为未成交，不会当作成功交易。关键检查失败时返回空曲线、空指标并阻断研究信号。指标增加 Sortino、连续亏损、最佳 / 最差月份、滑点和分红贡献。
+
+检查接口包括 `/quant/data-quality/check`、`/quant/backtest/validate`、`/quant/backtest/lookahead-check`、`/quant/backtest/universe-check` 和 `/quant/drift/{strategy_id}`。社交文本只接受用户主动上传、已授权 API 或许可样本；`/quant/social/policy` 公开边界，`/quant/social/analyze` 会在授权不明时返回 403。纸面组合与真实持仓隔离，`connectedToBroker` 始终为 `false`。
+
+## 自然语言量化策略助手
+
+`/quant` 顶部提供完整的策略生命周期：中文描述 → 白名单 DSL 预览 → 补充歧义 → 人工确认 → A 股历史核验 → 保存、复制、暂停、恢复、手动运行与提醒记录。策略卡会同时显示实际数据源、数据时间、缓存状态、调度器状态和是否允许生成研究提醒。
+
+当前可直接用日线行情计算和回测均线、RSI、MACD、布林带、成交量、波动率与回撤。估值、财报、新闻、公告、社交情绪、行业变化、ETF 重仓变化和个人持仓条件已经进入安全 DSL，但只有在相应授权数据源存在时才能运行；系统不会用价格数据或模型猜测替代缺失事实。盘中策略没有分钟源时会被阻断或降级为收盘后检查。
+
+主要接口：
+
+- `POST /quant/strategy/parse`、`POST /quant/strategy/preview`：解析并校验自然语言，不保存；
+- `POST /quant/strategy/confirm`：只有显式确认后才创建策略版本；
+- `POST /quant/strategy/backtest`、`POST /quant/strategy/{id}/backtest`：运行带成本、滑点、T+1、停牌、涨跌停和可信度门禁的历史核验；
+- `GET/PUT/DELETE /quant/strategy/{id}`：读取、自然语言或 JSON 修改、删除；修改仍需确认；
+- `POST /quant/strategy/{id}/run|pause|resume|copy`：手动检查、暂停、恢复和复制；
+- `GET /quant/strategy`：读取策略、运行、回测、通知和审计记录。
+
+当前 Sites 部署没有后台定时执行器，因此日、周、月和事件计划可以保存，但会明确显示 `runner_status=unavailable`，不会声称正在自动监控。缓存或过期行情可用于查看上次状态，但绝不会生成新的触发通知。所有策略使用 `manual_confirmation`，不连接券商、不提交订单、不承诺收益。
+
 ## Learn More
 
 - [vinext Documentation](https://github.com/cloudflare/vinext)

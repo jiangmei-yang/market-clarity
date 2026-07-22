@@ -1,0 +1,3 @@
+import {NextResponse} from "next/server";
+import {confirmNaturalStrategy} from "@/app/lib/natural-language-strategy-server";
+export async function POST(request:Request){try{const body=await request.json() as {preview_id?:string;confirmed?:boolean};if(!body.preview_id)return NextResponse.json({message:"缺少 preview_id"},{status:422});return NextResponse.json({strategy:await confirmNaturalStrategy(body.preview_id,body.confirmed===true)});}catch(error){const message=error instanceof Error?error.message:"无法保存策略";return NextResponse.json({message},{status:message.includes("确认")||message.includes("不能保存")?409:422});}}

@@ -16,7 +16,7 @@ type TradeRecord = { date: string; code: string; name: string; direction: "ä¹°å…
 type AttributionResult = {
   record_count: number;
   parse_errors: Array<{ line: number; message: string }>;
-  attribution: { positions: Position[]; active_positions: number; closed_positions: number; total_buy_amount: number; total_sell_amount: number; realized_pnl: number; total_fees: number; unmatched_sell: unknown[]; fifo_matches: FifoMatch[]; timeline: TradeRecord[] };
+  attribution: { positions: Position[]; active_positions: number; closed_positions: number; total_buy_amount: number; total_sell_amount: number; realized_pnl: number; total_fees: number; unmatched_sell: unknown[]; unmatched_sell_count:number; fifo_matches: FifoMatch[]; timeline: TradeRecord[] };
   risk_flags: Array<{ id: string; label: string; detail: string }>;
   report: string;
   data_status: { mode: string; notice: string };

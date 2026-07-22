@@ -161,15 +161,15 @@ test("returns a specific setup error before model discovery sends a request", as
   assert.match(body.message, /请先填写 API Key/);
 });
 
-test("routes assistant questions through deterministic tools before a real model", async () => {
+test("routes assistant questions through the general Goal-to-Workflow planner", async () => {
   const [server, route] = await Promise.all([
     readFile(new URL("../app/lib/assistant-server.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/assistant/message/route.ts", import.meta.url), "utf8"),
   ]);
   assert.match(server, /callAIProvider/);
-  assert.match(server, /diagnosePublicEtfs/);
-  assert.match(server, /parseQuantQuestion/);
-  assert.match(server, /portfolioTool/);
+  assert.match(server, /createAgentTask/);
+  assert.match(server, /goal_to_workflow/);
+  assert.doesNotMatch(server, /function resolveTool/);
   assert.match(server, /tool_used/);
   assert.match(server, /provider_id/);
   assert.doesNotMatch(server, /const answers\s*=/);
@@ -232,7 +232,7 @@ test("keeps global assistant state, confirmation gates, context, and mobile draw
   assert.match(state, /selected_asset: null/);
   assert.match(component, /useSearchParams/);
   assert.match(server, /confirmAssistantCommand/);
-  assert.match(server, /确认前，页面不会发生变化/);
+  assert.match(server, /确认前不会改变工作台/);
   assert.match(css, /\.global-assistant-panel/);
   assert.match(css, /height: min\(82vh, 760px\)/);
   assert.match(css, /prefers-reduced-motion: reduce/);

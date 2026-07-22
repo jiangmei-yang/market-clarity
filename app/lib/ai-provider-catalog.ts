@@ -95,10 +95,10 @@ function platformCatalog(): ServerAIProviderProfile[] {
   const hkgaiModel = process.env.HKGAI_MODEL || (genericHkgai ? process.env.AI_MODEL : "") || "";
   const builtinUrl=process.env.AI_BUILTIN_BASE_URL||""; const builtinModel=process.env.AI_BUILTIN_MODEL||""; const builtinKey=process.env.AI_BUILTIN_API_KEY||"";
   const defaultProvider=process.env.AI_DEFAULT_PROVIDER||"builtin";
-  const base=(providerId:string,providerType:AIProviderType,overrides:Partial<ServerAIProviderProfile>={})=>({
+  const base=(providerId:string,providerType:AIProviderType,overrides:Partial<ServerAIProviderProfile>={}):Omit<ServerAIProviderProfile,"connectionStatus">=>({
     providerId,providerType,apiMode:"chat" as AIAPIMode,apiKey:"",enabled:true,isDefault:false,isPlatformDefault:defaultProvider===providerId,
     apiKeyMasked:"不需要",secretSource:"none" as const,secretStatus:"not_required" as const,capabilities:DEFAULT_CAPABILITIES,
-    modelCapabilities:DEFAULT_MODEL_CAPABILITIES,mode:providerMode(providerType,providerId),privacyLabel:privacyLabel(providerMode(providerType,providerId)),editable:false,...overrides,
+    displayName:providerId,baseUrl:"",model:"",description:"",modelCapabilities:DEFAULT_MODEL_CAPABILITIES,mode:providerMode(providerType,providerId),privacyLabel:privacyLabel(providerMode(providerType,providerId)),editable:false,...overrides,
   });
   const entries: Array<Omit<ServerAIProviderProfile, "connectionStatus">> = [
     base("builtin","compatible",{displayName:"平台内置模型",baseUrl:builtinUrl,model:builtinModel,apiKey:builtinKey,apiKeyMasked:builtinKey?"••••••••":"平台托管",secretSource:builtinKey?"environment":"none",secretStatus:builtinUrl&&builtinModel?(builtinKey?"server_configured":"not_required"):"missing",description:"用户无需 API Key；由平台托管的开源模型服务"}),

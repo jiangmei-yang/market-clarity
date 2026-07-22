@@ -8,10 +8,8 @@ import {
   type Workspace,
   type WorkspaceChangePreview,
 } from "./personal-workbench";
-import { isConfigurationRequest, pageContextFor, toCommandPreview } from "./global-assistant";
-import { callAIProvider, readProviderState, type AIProviderProfile, type ServerAIProviderProfile } from "./ai-provider-catalog";
-import { diagnosePublicEtfs } from "./etf-public";
-import { parseQuantQuestion } from "./quant-verification";
+import { pageContextFor, toCommandPreview } from "./global-assistant";
+import { callAIProviderWithFallback, readProviderState, type AIProviderProfile, type ServerAIProviderProfile } from "./ai-provider-catalog";
 
 type StoredCommand = {
   commandId: string;
@@ -82,33 +80,6 @@ function responsePayload(input: {
   return {...result,message:{type:input.type,content:input.content,preview:input.preview}};
 }
 
-function portfolioTool(snapshot: AssistantSnapshot) {
-  const holdings = (snapshot.holdings && typeof snapshot.holdings === "object" ? snapshot.holdings : {}) as Record<string,{name?:string;value?:number;industry?:string}>;
-  const rows = Object.entries(holdings).map(([code,item])=>({code,name:item.name??code,value:Number(item.value??0),industry:item.industry??"行业待核对"})).filter((item)=>item.value>0);
-  const total = rows.reduce((sum,item)=>sum+item.value,0);
-  const weighted = rows.map((item)=>({...item,weight:total?item.value/total:0})).sort((left,right)=>right.weight-left.weight);
-  const sectors = Object.entries(rows.reduce<Record<string,number>>((result,item)=>({...result,[item.industry]:(result[item.industry]??0)+item.value}),{})).map(([industry,value])=>({industry,weight:total?value/total:0})).sort((left,right)=>right.weight-left.weight);
-  return {dataStatus:rows.length?"user_saved":"missing",calculatedAt:new Date().toISOString(),portfolioValue:total,positionCount:rows.length,largestPosition:weighted[0]??null,largestSector:sectors[0]??null,positions:weighted.slice(0,12)};
-}
-
-async function resolveTool(message:string,snapshot:AssistantSnapshot) {
-  if (/(持仓|组合|仓位|集中度|行业暴露)/.test(message)) return {intent:"portfolio_analysis",toolUsed:"get_portfolio_risk",data:portfolioTool(snapshot)};
-  if (/(量化|回测|历史检验|规则筛选)/.test(message)) {
-    const code=message.match(/\b\d{6}\b/)?.[0];
-    if(!code) return {intent:"quant_analysis",toolUsed:null,data:null,clarification:"请补充 6 位 A 股代码，以及你想核实的历史条件。"};
-    return {intent:"quant_analysis",toolUsed:"parse_quant_rule",data:{dataStatus:"candidate_only",hypothesis:parseQuantQuestion(message,code)}};
-  }
-  if (/ETF|基金/.test(message)) {
-    const code=message.match(/\b\d{6}\b/)?.[0];
-    if(!code) return {intent:"etf_analysis",toolUsed:null,data:null,clarification:"请补充 6 位 ETF 代码，我会先读取公开披露再解释。"};
-    const controller=new AbortController(); const timer=setTimeout(()=>controller.abort(),15_000);
-    try{return {intent:"etf_analysis",toolUsed:"diagnose_etf_holdings",data:await diagnosePublicEtfs([{code}],controller.signal)};}
-    catch{return {intent:"etf_analysis",toolUsed:"diagnose_etf_holdings",data:{dataStatus:"unavailable",code,message:"公开 ETF 持仓暂时不可用，没有使用演示数据代替。"}};}
-    finally{clearTimeout(timer);}
-  }
-  return {intent:"conversation",toolUsed:null,data:null};
-}
-
 export async function createAssistantPreview(message: string, workspaceId?: string) {
   const { snapshot, workspaces, activeWorkspace } = await snapshotOrDefault();
   const namedWorkspace = /(切换|打开|进入)/.test(message)
@@ -154,7 +125,7 @@ export async function handleAssistantMessage(input: {
 }) {
   const message = input.message.trim();
   if (!message) throw new Error("请先输入你想配置或了解的内容");
-  const { snapshot, activeWorkspace } = await snapshotOrDefault();
+  await snapshotOrDefault();
   const route = input.route?.startsWith("/") ? input.route : "/";
   const context = pageContextFor(route);
   const providerState = await readProviderState();
@@ -169,33 +140,23 @@ export async function handleAssistantMessage(input: {
     return responsePayload({sessionId,type:"risk_alert",content:"我不能执行买卖、自动交易或调仓。我可以把这笔计划带入交易前检查，核对仓位、理由和退出条件。",intent:"trade_execution_blocked",provider,suggestedActions:["进入交易前检查","检查计划后仓位"]});
   }
 
-  if (isConfigurationRequest(message)) {
-    const { parsed, commandId } = await createAssistantPreview(message, input.workspace_id || activeWorkspace.id);
-    if (!parsed.canApply) {
-      return responsePayload({sessionId,type:parsed.warnings.length?"risk_alert":"clarification",content:parsed.warnings[0]||parsed.questions[0]||"请补充你想解决的问题、可投入时间或希望调整的模块。",intent:"workspace_config",provider,toolUsed:"workspace_orchestrator"});
-    }
-    const preview=toCommandPreview(commandId,parsed.preview.id,parsed);
-    const content=parsed.recommendation
-      ? `${parsed.recommendation.reason}${parsed.questions.length ? ` 我先给出一个安全起点，并列出 ${parsed.questions.length} 个可以继续调整的问题。` : ""}`
-      : "我整理了一份工作台配置变更，请确认。确认前，页面不会发生变化。";
-    return responsePayload({sessionId,type:"config_preview",content,intent:parsed.recommendation?"workspace_recommendation":"workspace_config",provider,preview,requiresConfirmation:true,toolUsed:"workspace_orchestrator"});
-  }
-  const tool=await resolveTool(message,snapshot);
-  if(tool.clarification) return responsePayload({sessionId,type:"clarification",content:tool.clarification,intent:tool.intent,provider,suggestedActions:["补充代码","打开对应工具"]});
-  if(provider.providerId==="mock") {
-    if(tool.toolUsed) return responsePayload({sessionId,type:"analysis",content:`已完成确定性检查。${JSON.stringify(tool.data).slice(0,900)}`,intent:tool.intent,provider,toolUsed:tool.toolUsed,data:tool.data,suggestedActions:["查看计算口径","接入真实模型解释"]});
-    const reason=providerState.privacyMode?"本地隐私模式已开启，但当前没有可用的本机模型。":"当前没有可用的真实模型。";
-    const requestedHint=requested&&requested.providerId!=="mock"?` 你选择的 ${requested.displayName} 未连接或不符合当前隐私模式。`:"";
-    return responsePayload({sessionId,type:"error_message",content:`${reason}${requestedHint} 系统没有伪造 AI 回答；持仓、ETF 和量化的确定性检查仍可使用。`,intent:"conversation",provider,fallbackAvailable:true,suggestedActions:["检查本机模型","切换模型","继续使用规则版结果"]});
+  const {createAgentTask}=await import("./agent-os");
+  const task=await createAgentTask({goal:message,route,selected_provider:provider.providerId});
+  const actualProvider=providerState.providers.find(item=>item.providerId===task.provider)??provider;
+  if(task.extraction.risk_level==="restricted")return responsePayload({sessionId,type:"risk_alert",content:task.reliability.message,intent:"restricted",provider:actualProvider,toolUsed:"goal_to_workflow",data:task,suggestedActions:["改为风险检查","创建纸面模拟"]});
+  if(task.workspace_patch&&task.workspace_command_id){const preview=toCommandPreview(task.workspace_command_id,task.workspace_patch.preview.id,task.workspace_patch);return responsePayload({sessionId,type:"config_preview",content:`${task.workspace_patch.summary}。我已生成修改前后的预览，确认前不会改变工作台。`,intent:"workspace_config",provider:actualProvider,preview,requiresConfirmation:true,toolUsed:"goal_to_workflow",data:{task_id:task.task_id,steps:task.steps,reliability:task.reliability}});}
+  const completed=task.tool_calls.filter(item=>item.status==="completed");const failed=task.tool_calls.filter(item=>item.status==="failed");
+  if(provider.providerId==="mock"||task.planner_mode==="local_fallback"){
+    if(completed.length){const capability=completed.find(item=>item.tool_id==="search_capabilities")?.output as {capabilities?:Array<{name:string;status:string;route?:string|null;why_relevant:string}>}|undefined;const content=capability?.capabilities?.length?`根据当前能力知识库，与你的问题最相关的是：${capability.capabilities.slice(0,6).map(item=>`${item.name}（${item.status}${item.route?`，入口 ${item.route}`:""}）`).join("；")}。这些状态来自当前 Registry，不是模型猜测。`:`已完成 ${completed.length} 个确定性工具步骤${failed.length?`，另有 ${failed.length} 个步骤失败并可单独重试`:""}。结果、来源和运行状态已保留在任务记录中。`;return responsePayload({sessionId,type:"analysis",content,intent:"goal_to_workflow",provider:actualProvider,toolUsed:"goal_to_workflow",data:task,suggestedActions:["打开 Agent 任务详情","查看数据来源"]});}
+    const questions=task.extraction.missing_information.slice(0,3);const reason=providerState.privacyMode?"本地隐私模式已开启，但当前没有可用的本机模型。":"当前没有可用的真实模型。";const requestedHint=requested&&requested.providerId!=="mock"?` 你选择的 ${requested.displayName} 未连接或不符合当前隐私模式。`:"";return responsePayload({sessionId,type:questions.length?"clarification":"error_message",content:questions.length?`为了继续，我只需要确认：${questions.join("；")}`:`${reason}${requestedHint} 系统没有伪造 AI 回答；可继续使用确定性工具。`,intent:"goal_to_workflow",provider:actualProvider,toolUsed:"goal_to_workflow",data:task,fallbackAvailable:true,suggestedActions:["打开 Agent 工作台","切换模型","继续使用规则版结果"]});
   }
   try {
     const history=(input.history??[]).slice(-10).filter((item)=>item.content.trim()).map((item)=>({role:item.role,content:item.content.slice(0,1800)}));
-    const toolContext=tool.toolUsed?`\n系统工具：${tool.toolUsed}\n工具结果：${JSON.stringify(tool.data).slice(0,8000)}`:"";
-    const content=await callAIProvider(provider,[{role:"system",content:ASSISTANT_SYSTEM_PROMPT},...history,{role:"user",content:`当前页面：${context.label}\n用户问题：${message.slice(0,3000)}${toolContext}`}],650);
+    const candidates=[actualProvider,...providerState.providers.filter(item=>item.providerId!==actualProvider.providerId&&item.providerId!=="mock"&&item.enabled&&item.connectionStatus==="available")];const answer=await callAIProviderWithFallback(candidates,[{role:"system",content:ASSISTANT_SYSTEM_PROMPT},...history,{role:"user",content:`当前页面：${context.label}\n用户问题：${message.slice(0,3000)}\nGoal-to-Workflow 任务：${JSON.stringify({goal:task.extraction.goal,steps:task.steps,tools:task.tool_calls.map(item=>({tool:item.tool_id,status:item.status,output:item.output,reliability:item.reliability})),sources:task.sources,missing:task.extraction.missing_information}).slice(0,12000)}`}],650);const content=answer.content;
     if(!content) throw new Error("empty");
-    return responsePayload({sessionId,type:tool.toolUsed?"analysis":"assistant_message",content,intent:tool.intent,provider,toolUsed:tool.toolUsed,data:tool.data,suggestedActions:tool.toolUsed?["查看计算口径","进入交易前检查"]:[]});
+    const answeredBy=providerState.providers.find(item=>item.displayName===answer.provider||item.providerId===answer.provider)??actualProvider;return responsePayload({sessionId,type:completed.length?"analysis":"assistant_message",content,intent:"goal_to_workflow",provider:answeredBy,toolUsed:"goal_to_workflow",data:task,suggestedActions:["打开 Agent 任务详情","查看数据来源"]});
   } catch {
-    return responsePayload({sessionId,type:"error_message",content:`${provider.displayName} 当前暂时不可用。`,intent:tool.intent,provider,toolUsed:tool.toolUsed,data:tool.data,fallbackAvailable:true,suggestedActions:["重试","切换模型","使用规则版结果"]});
+    return responsePayload({sessionId,type:"error_message",content:`${actualProvider.displayName} 当前暂时不可用；已完成的工具结果仍保留，没有补写模型结论。`,intent:"goal_to_workflow",provider:actualProvider,toolUsed:"goal_to_workflow",data:task,fallbackAvailable:true,suggestedActions:["重试失败步骤","切换模型","使用规则版结果"]});
   }
 }
 

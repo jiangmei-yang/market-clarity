@@ -28,6 +28,13 @@ export type UserSnapshot = {
   quantSignals?: unknown;
   quantAudit?: unknown;
   quantPaperPortfolios?: unknown;
+  quantBacktests?: unknown;
+  strategyDrafts?: unknown;
+  naturalLanguageStrategies?: unknown;
+  strategyRuns?: unknown;
+  strategyNotifications?: unknown;
+  strategyBacktestHistory?: unknown;
+  strategyAudit?: unknown;
   aiDefaultProviderId?: string;
   aiTaskRouting?: unknown;
   savedAt?: string;
