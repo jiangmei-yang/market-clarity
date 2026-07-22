@@ -60,7 +60,7 @@ test("server-renders privacy-preserving AI model settings", async () => {
 });
 
 test("mounts one global AI assistant across every product route", async () => {
-  const routes = ["/", "/workspace", "/opportunity", "/portfolio", "/analysis", "/etf-tool", "/trade-tool", "/ai-settings"];
+  const routes = ["/", "/workspace", "/opportunity", "/portfolio", "/analysis", "/quant", "/etf-tool", "/trade-tool", "/ai-settings"];
   for (const path of routes) {
     const response = await render(path);
     assert.equal(response.status, 200, path);
@@ -132,6 +132,21 @@ test("runs deterministic quant verification only after explicit confirmation", a
   assert.ok(runBody.result.inSampleMetrics.sampleCount > 0);
   assert.ok(runBody.result.outOfSampleMetrics.sampleCount > 0);
   assert.match(runBody.result.conclusion, /提供有限支持|削弱当前判断|证据不足/);
+});
+
+test("server-renders the explainable personal quant workbench", async () => {
+  const response = await render("/quant");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /量化规则/);
+  assert.match(html, /我的规则/);
+  assert.match(html, /条件筛选/);
+  assert.match(html, /策略验证/);
+  assert.match(html, /组合风险/);
+  assert.match(html, /规则提醒/);
+  assert.match(html, /固定演示股票池/);
+  assert.match(html, /确认前不会用于筛选/);
+  assert.doesNotMatch(html, /稳赚|必涨|强烈推荐|目标价/);
 });
 
 test("server-renders native ETF and trade review workspaces", async () => {

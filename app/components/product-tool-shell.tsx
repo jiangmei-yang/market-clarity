@@ -7,12 +7,13 @@ import {
   History,
   LayoutDashboard,
   Layers3,
+  ScanSearch,
   ReceiptText,
   ShieldCheck,
 } from "lucide-react";
 
 type ProductToolShellProps = {
-  active: "etf" | "trade";
+  active: "etf" | "trade" | "quant";
   title: string;
   description: string;
   status: string;
@@ -23,6 +24,7 @@ const navigation: Array<{ href: string; label: string; icon: typeof LayoutDashbo
   { href: "/", label: "工作台", icon: LayoutDashboard },
   { href: "/?view=research", label: "研究", icon: FileSearch },
   { href: "/?view=portfolio", label: "组合", icon: BriefcaseBusiness },
+  { href: "/quant", label: "量化规则", icon: ScanSearch },
   { href: "/?view=newDecision", label: "决策审查", icon: ShieldCheck },
   { href: "/trade-tool", label: "交易复盘", icon: ReceiptText, id: "trade" },
   { href: "/?view=history", label: "历史", icon: History },
@@ -36,7 +38,7 @@ export function ProductToolShell({ active, title, description, status, children 
         <Link className="native-tool-brand" href="/" aria-label="安心看股工作台"><span>安</span><strong>安心看股</strong></Link>
         <nav aria-label="主导航">
           {navigation.map(({ href, label, icon: Icon, id }) => {
-            const selected = id === active;
+            const selected = id === active || (active === "quant" && href === "/quant");
             return <Link key={label} href={href} className={selected ? "native-tool-nav active" : "native-tool-nav"} aria-current={selected ? "page" : undefined}><Icon /><span>{label}</span></Link>;
           })}
           <Link href="/etf-tool" className={active === "etf" ? "native-tool-nav active" : "native-tool-nav"} aria-current={active === "etf" ? "page" : undefined}><Layers3 /><span>ETF 穿透</span></Link>

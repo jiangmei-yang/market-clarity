@@ -28,6 +28,7 @@ import {
   LogOut,
   Plus,
   Search,
+  ScanSearch,
   ReceiptText,
   ShieldCheck,
   SlidersHorizontal,
@@ -201,6 +202,7 @@ const navItems = [
 ];
 
 const toolNavItems = [
+  { href: "/quant", label: "量化规则", icon: ScanSearch },
   { href: "/etf-tool", label: "ETF 诊断", icon: Layers3 },
   { href: "/trade-tool", label: "交易复盘", icon: ReceiptText },
 ];
