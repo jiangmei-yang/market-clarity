@@ -58,18 +58,20 @@ test("keeps theme, local signal evidence, and four-step precheck in the workbenc
 });
 
 test("opens the requested stock workbench view and keeps tool navigation explicit", async () => {
-  const [analysisPage, clientPage, toolShell] = await Promise.all([
+  const [analysisPage, clientPage, toolShell, appNavigation] = await Promise.all([
     readFile(new URL("../app/analysis/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/client-page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/components/product-tool-shell.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/app-navigation.tsx", import.meta.url), "utf8"),
   ]);
   assert.match(analysisPage, /allowedViews/);
   assert.match(analysisPage, /initialView = requestedView/);
   assert.match(clientPage, /useState<View>\(initialView\)/);
-  assert.match(toolShell, /\/analysis\?view=research/);
-  assert.match(toolShell, /href: "\/portfolio"/);
-  assert.match(toolShell, /href: "\/quant"/);
-  assert.match(toolShell, /href: "\/ai-settings"/);
+  assert.match(toolShell, /AppNavigation/);
+  assert.match(appNavigation, /\/analysis\?view=research/);
+  assert.match(appNavigation, /href: "\/portfolio"/);
+  assert.match(appNavigation, /href: "\/quant"/);
+  assert.match(appNavigation, /href: "\/ai-settings"/);
 });
 
 test("server-renders privacy-preserving AI model settings", async () => {
@@ -136,10 +138,17 @@ test("keeps AI keys server-only and applies per-user provider priority", async (
   assert.match(settings, /Base URL/);
   assert.match(settings, /type=\{showKey\?"text":"password"\}/);
   assert.match(settings, /自动获取模型/);
+  assert.match(settings, /保存一次，之后自动调用/);
+  assert.match(settings, /测试并识别模型/);
+  assert.match(settings, /模型 ID 必须由当前服务商提供/);
   assert.match(settings, /deepseek-chat/);
   assert.match(catalog, /discoverUnsavedProviderModels/);
   assert.match(catalog, /API Key 未被服务商接受/);
   assert.match(catalog, /模型名称或调用模式未被服务商接受/);
+  assert.match(catalog, /redirect:"manual"/);
+  assert.doesNotMatch(catalog, /redirect:"error"/);
+  assert.match(catalog, /test-new-api\.hkchat\.app/);
+  assert.match(catalog, /url\.pathname = "\/v1"/);
   assert.match(discoveryRoute, /discoverUnsavedProviderModels/);
   assert.doesNotMatch(settings, /(?:localStorage|sessionStorage)\.setItem\([^\n]*apiKey/i);
 });

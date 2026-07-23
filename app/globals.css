@@ -101,6 +101,20 @@ svg { stroke-width: 1.8; }
 .rail-button:hover { background: var(--accent); color: var(--primary); }
 .rail-button.active { background: var(--secondary); color: var(--primary); }
 .rail-button.active::before { content: ""; position: absolute; left: -8px; width: 3px; height: 24px; border-radius: 0 3px 3px 0; background: var(--primary); }
+.unified-sidebar { position: fixed; inset: 0 auto 0 0; z-index: 20; width: var(--rail-width); height: 100vh; display: flex; flex-direction: column; align-items: center; border-right: 1px solid var(--border); background: color-mix(in oklch, white, var(--background) 22%); }
+.unified-brand { width: 100%; height: var(--header-height); display: flex; align-items: center; justify-content: center; gap: 10px; border-bottom: 1px solid var(--border); color: var(--foreground); text-decoration: none; }
+.unified-brand > span { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(145deg, var(--primary), color-mix(in oklch, var(--primary), #fff 15%)); color: white; font-weight: 750; box-shadow: 0 5px 15px color-mix(in oklch, var(--primary), transparent 78%); }
+.unified-brand > div { display: none; }
+.unified-sidebar > nav { width: 100%; display: flex; flex-direction: column; gap: 5px; padding: 14px 8px; }
+.unified-sidebar > nav > a { position: relative; width: 56px; min-height: 51px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border-radius: 9px; color: var(--muted-foreground); text-decoration: none; transition: color 180ms ease, background 180ms ease; }
+.unified-sidebar > nav > a svg { width: 19px; height: 19px; }
+.unified-sidebar > nav > a span { font-size: 12px; line-height: 1; }
+.unified-sidebar > nav > a:hover { background: var(--accent); color: var(--primary); }
+.unified-sidebar > nav > a.active { background: var(--secondary); color: var(--primary); }
+.unified-sidebar > nav > a.active::before { content: ""; position: absolute; left: -8px; width: 3px; height: 24px; border-radius: 0 3px 3px 0; background: var(--primary); }
+.unified-account { width: 100%; margin-top: auto; min-height: 64px; padding: 10px 8px 16px; display: flex; justify-content: center; align-items: center; border-top: 1px solid var(--border); }
+.unified-account > span { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--gold-soft); color: var(--gold-strong); font-size: 12px; font-weight: 750; }
+.unified-account > div, .unified-account > a { display: none; }
 .rail-bottom { width: 100%; margin-top: auto; padding: 10px 8px 16px; border-top: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .avatar-button { margin-top: 8px; width: 34px; height: 34px; border: 1px solid color-mix(in oklch, var(--gold), white 58%); border-radius: 10px; background: var(--gold-soft); color: var(--gold-strong); font-size: 12px; font-weight: 750; }
 
@@ -1998,6 +2012,11 @@ svg { stroke-width: 1.8; }
 .ai-model-discovery label { grid-column: 1 / -1; display: grid; grid-template-columns: 90px minmax(0, 1fr); align-items: center; gap: 10px; }
 .ai-model-discovery label span { color: var(--muted-foreground); font-size: 12px; font-weight: 650; }
 .ai-model-discovery select { height: 36px; padding: 0 10px; border: 1px solid var(--input); border-radius: 8px; background: var(--card); color: var(--foreground); font: inherit; font-size: 12px; }
+.ai-auto-routing-note { margin-top: 12px; padding: 13px 15px; display: grid; grid-template-columns: 20px minmax(0,1fr); gap: 10px; border: 1px solid color-mix(in oklch, var(--primary), white 68%); border-radius: 10px; background: color-mix(in oklch, var(--secondary), white 34%); }
+.ai-auto-routing-note > svg { width: 18px; color: var(--primary); }
+.ai-auto-routing-note > div { display: grid; gap: 3px; }
+.ai-auto-routing-note strong { font-size: 13px; }
+.ai-auto-routing-note p { margin: 0; color: var(--muted-foreground); font-size: 12px; line-height: 1.55; }
 
 /* One desktop frame across the workbench, research desk, and analysis tools. */
 @media (min-width: 901px) {

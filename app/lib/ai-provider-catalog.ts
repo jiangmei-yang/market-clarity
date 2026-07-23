@@ -181,6 +181,7 @@ function safeEndpoint(raw: string, providerType: AIProviderType) {
   if (url.protocol !== "https:" && !(local && process.env.NODE_ENV !== "production")) throw new Error("云端模型接口必须使用 HTTPS");
   if (local && process.env.NODE_ENV === "production") throw new Error("云端站点无法访问你电脑上的 Ollama；请使用服务器可访问的 HTTPS 地址");
   if (providerType === "anthropic" && url.hostname !== "api.anthropic.com" && !configured(process.env.AI_ALLOW_CUSTOM_ANTHROPIC_ENDPOINTS)) throw new Error("Claude 原生接口仅允许 api.anthropic.com");
+  if (url.hostname === "test-new-api.hkchat.app" && (url.pathname === "/" || url.pathname === "")) url.pathname = "/v1";
   return url.toString().replace(/\/$/, "");
 }
 
@@ -318,6 +319,12 @@ function providerHttpError(response: Response|number, stage = "连接") {
   return new Error(`${stage}失败（服务商返回 ${status}），请检查配置后重试。`);
 }
 
+function rejectProviderRedirect(response: Response) {
+  if (response.status >= 300 && response.status < 400) {
+    throw new Error("模型服务返回了重定向。请使用服务商提供的最终 HTTPS Base URL，不要填写文档页或登录页地址。");
+  }
+}
+
 export async function discoverUnsavedProviderModels(input: AIProviderInput) {
   const providerType = input.providerType ?? "compatible";
   if (!["compatible","openai","anthropic","ollama","vllm","llamacpp"].includes(providerType)) throw new Error("当前提供商不支持自动获取模型");
@@ -327,7 +334,8 @@ export async function discoverUnsavedProviderModels(input: AIProviderInput) {
   try {
     const headers:Record<string,string>={accept:"application/json"};
     if(providerType==="anthropic"){headers["x-api-key"]=apiKey;headers["anthropic-version"]="2023-06-01";} else headers.authorization=`Bearer ${apiKey}`;
-    const response=await fetch(`${baseUrl.replace(/\/$/,"")}/models`,{method:"GET",redirect:"error",signal:controller.signal,headers});
+    const response=await fetch(`${baseUrl.replace(/\/$/,"")}/models`,{method:"GET",redirect:"manual",signal:controller.signal,headers});
+    rejectProviderRedirect(response);
     if(!response.ok) throw providerHttpError(response,"模型列表");
     const payload=await response.json() as {data?:Array<{id?:string}>;models?:Array<{id?:string;name?:string}>};
     const models=[...(payload.data??[]).map((item)=>item.id),...(payload.models??[]).map((item)=>item.id??item.name)].filter((item):item is string=>Boolean(item)).slice(0,60);
@@ -347,21 +355,24 @@ export async function chatWithProvider(provider: ServerAIProviderProfile, messag
   try {
     if (provider.providerType==="anthropic") {
       const system = messages.filter((item)=>item.role==="system").map((item)=>item.content).join("\n");
-      const response = await fetch(`${provider.baseUrl.replace(/\/$/,"")}/messages`,{method:"POST",redirect:"error",signal:controller.signal,headers:{"content-type":"application/json","x-api-key":provider.apiKey,"anthropic-version":"2023-06-01"},body:JSON.stringify({model:provider.model,max_tokens:maxTokens,system,messages:messages.filter((item)=>item.role!=="system")})});
+      const response = await fetch(`${provider.baseUrl.replace(/\/$/,"")}/messages`,{method:"POST",redirect:"manual",signal:controller.signal,headers:{"content-type":"application/json","x-api-key":provider.apiKey,"anthropic-version":"2023-06-01"},body:JSON.stringify({model:provider.model,max_tokens:maxTokens,system,messages:messages.filter((item)=>item.role!=="system")})});
+      rejectProviderRedirect(response);
       if (!response.ok) throw providerHttpError(response);
       const payload = await response.json() as {content?:Array<{type?:string;text?:string}>;usage?:{input_tokens?:number;output_tokens?:number};stop_reason?:string};
       const promptTokens=payload.usage?.input_tokens??0,completionTokens=payload.usage?.output_tokens??0;
       const result={content:payload.content?.find((item)=>item.type==="text")?.text?.trim()||"",provider:provider.providerId,model:provider.model,usage:{promptTokens,completionTokens,totalTokens:promptTokens+completionTokens},toolCalls:[] as unknown[],finishReason:payload.stop_reason??"stop",latencyMs:Date.now()-started};await recordModelAudit(provider,"completed",result.latencyMs);return result;
     }
     if (provider.apiMode==="responses") {
-      const response = await fetch(`${provider.baseUrl.replace(/\/$/,"")}/responses`,{method:"POST",redirect:"error",signal:controller.signal,headers:{"content-type":"application/json",authorization:`Bearer ${provider.apiKey}`},body:JSON.stringify({model:provider.model,input:messages,max_output_tokens:maxTokens})});
+      const response = await fetch(`${provider.baseUrl.replace(/\/$/,"")}/responses`,{method:"POST",redirect:"manual",signal:controller.signal,headers:{"content-type":"application/json",authorization:`Bearer ${provider.apiKey}`},body:JSON.stringify({model:provider.model,input:messages,max_output_tokens:maxTokens})});
+      rejectProviderRedirect(response);
       if (!response.ok) throw providerHttpError(response);
       const payload = await response.json() as {output_text?:string;output?:Array<{content?:Array<{text?:string}>}>;usage?:{input_tokens?:number;output_tokens?:number;total_tokens?:number}};
       const promptTokens=payload.usage?.input_tokens??0,completionTokens=payload.usage?.output_tokens??0;
       const result={content:payload.output_text?.trim()||payload.output?.flatMap((item)=>item.content??[]).map((item)=>item.text??"").join("").trim()||"",provider:provider.providerId,model:provider.model,usage:{promptTokens,completionTokens,totalTokens:payload.usage?.total_tokens??promptTokens+completionTokens},toolCalls:[] as unknown[],finishReason:"stop",latencyMs:Date.now()-started};await recordModelAudit(provider,"completed",result.latencyMs);return result;
     }
     const headers:Record<string,string>={"content-type":"application/json"}; if(provider.apiKey) headers.authorization=`Bearer ${provider.apiKey}`;
-    const response = await fetch(`${provider.baseUrl.replace(/\/$/,"")}/chat/completions`,{method:"POST",redirect:"error",signal:controller.signal,headers,body:JSON.stringify({model:provider.model,messages,temperature:0.2,max_tokens:maxTokens})});
+    const response = await fetch(`${provider.baseUrl.replace(/\/$/,"")}/chat/completions`,{method:"POST",redirect:"manual",signal:controller.signal,headers,body:JSON.stringify({model:provider.model,messages,temperature:0.2,max_tokens:maxTokens})});
+    rejectProviderRedirect(response);
     if (!response.ok) throw providerHttpError(response);
     const payload = await response.json() as {choices?:Array<{message?:{content?:string;tool_calls?:unknown[]};finish_reason?:string}>;usage?:{prompt_tokens?:number;completion_tokens?:number;total_tokens?:number}};
     const choice=payload.choices?.[0]; const promptTokens=payload.usage?.prompt_tokens??0,completionTokens=payload.usage?.completion_tokens??0;
