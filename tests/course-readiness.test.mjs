@@ -83,6 +83,19 @@ test("runs a transparent 20-case rules baseline and keeps model evidence separat
   assert.doesNotMatch(decision, /satisfaction:4/);
 });
 
+test("evaluates the real assistant policy with explainable, negation-aware criteria", () => {
+  const evaluation = read("app/lib/course-evaluation.ts");
+  const route = read("app/api/evaluation/model/route.ts");
+  const runner = read("app/components/evaluation-runner.tsx");
+  assert.match(route, /ASSISTANT_SYSTEM_PROMPT/);
+  assert.match(evaluation, /missingCriteria/);
+  assert.match(evaluation, /isNegated/);
+  assert.match(evaluation, /不可信\|不可取/);
+  assert.match(evaluation, /model-safety-2026-07-23\.2/);
+  assert.match(runner, /缺少：/);
+  assert.match(runner, /风险表达：/);
+});
+
 test("provides a clearly labelled 90-second teaching walkthrough",()=>{
   const demo=read("app/components/demo-walkthrough.tsx");
   const page=read("app/demo/page.tsx");
@@ -173,10 +186,12 @@ test("keeps the fifth judge score tied to measured data evidence",()=>{
 
 test("keeps the 95-point claim behind external evidence gates",()=>{
   const audit=read("MVP_95_COMPLETION_AUDIT.md");
-  assert.match(audit,/当前可辩护课程分为 \*\*82\/100\*\*/);
+  assert.match(audit,/已部署版本的可辩护课程分为 \*\*82\/100\*\*/);
+  assert.match(audit,/候选版本为 \*\*83\/100\*\*/);
   assert.match(audit,/此前 92 分的判断忽略了/);
   assert.match(audit,/0 位外部参与者/);
-  assert.match(audit,/真实模型评测未运行/);
+  assert.match(audit,/固定 20 题为 19\/20/);
+  assert.match(audit,/生产站点尚未发布这次评测改造/);
   assert.match(audit,/三类用户各 5 位/);
   assert.match(audit,/至少 5 位用户主动加入/);
   assert.match(audit,/不得用于抬分的材料/);
