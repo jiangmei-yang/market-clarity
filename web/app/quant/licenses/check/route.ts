@@ -1,0 +1,3 @@
+import {NextResponse} from "next/server";
+import {LICENSE_REGISTRY} from "@/app/lib/quant-engine-router";
+export async function POST(request:Request){const body=await request.json().catch(()=>({})) as {package?:string};const item=LICENSE_REGISTRY.find(row=>row.package===body.package);if(!item)return NextResponse.json({status:"blocked",message:"未登记的依赖禁止进入生产环境"},{status:404});return NextResponse.json({package:item.package,status:item.status,production_allowed:item.status==="approved",checks:{version_locked:item.version!=="not-installed",license_reviewed:item.status==="approved",notice_ready:false},message:item.status==="approved"?"许可证检查通过":"尚未完成商业与 NOTICE 审核"});}

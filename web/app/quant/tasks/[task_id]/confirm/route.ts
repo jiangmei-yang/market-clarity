@@ -1,0 +1,2 @@
+import {NextResponse} from "next/server";import {updateQuantTask} from "@/app/lib/quant-research-server";
+export async function POST(request:Request,{params}:{params:Promise<{task_id:string}>}){try{const body=await request.json() as {confirmed?:boolean};if(body.confirmed!==true)return NextResponse.json({message:"请明确确认任务配置"},{status:422});return NextResponse.json({task:await updateQuantTask((await params).task_id,"confirm")});}catch(error){return NextResponse.json({message:error instanceof Error?error.message:"确认失败"},{status:409});}}

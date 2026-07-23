@@ -1,0 +1,3 @@
+import {NextResponse} from "next/server";import {STRATEGY_REGISTRY} from "@/app/lib/quant-research";import {listQuantState,saveStrategy} from "@/app/lib/quant-research-server";
+export async function GET(){try{const state=await listQuantState();return NextResponse.json({registry:STRATEGY_REGISTRY,saved:state.strategies});}catch(error){return NextResponse.json({message:error instanceof Error?error.message:"无法读取策略"},{status:401});}}
+export async function POST(request:Request){try{return NextResponse.json({strategy:await saveStrategy(await request.json())},{status:201});}catch(error){return NextResponse.json({message:error instanceof Error?error.message:"无法保存策略"},{status:422});}}

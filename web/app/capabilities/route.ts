@@ -1,0 +1,3 @@
+import {NextResponse} from "next/server";
+import {searchPlatformCapabilityIndex,syncPlatformCapabilityIndex} from "@/app/lib/capability-index-server";
+export async function GET(request:Request){const query=new URL(request.url).searchParams.get("q")?.trim();if(query){const result=await searchPlatformCapabilityIndex(query,{limit:20});return NextResponse.json({knowledge_type:"platform_capabilities",items:result.hits,index:result.index,runtime:result.runtime});}const result=await syncPlatformCapabilityIndex();const {documents,...index}=result;return NextResponse.json({knowledge_type:"platform_capabilities",items:documents,index});}

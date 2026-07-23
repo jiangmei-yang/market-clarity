@@ -1,0 +1,4 @@
+import {NextResponse} from "next/server";
+import {deleteDashboardDataSource,listDashboardDataSources} from "@/app/lib/dashboard-server";
+export async function GET(_:Request,{params}:{params:Promise<{id:string}>}){try{const {id}=await params;const source=(await listDashboardDataSources()).find(item=>item.sourceId===id);if(!source)return NextResponse.json({message:"数据源不存在"},{status:404});return NextResponse.json({data_source:source});}catch(error){return NextResponse.json({message:error instanceof Error?error.message:"无法读取数据源"},{status:401});}}
+export async function DELETE(request:Request,{params}:{params:Promise<{id:string}>}){try{const body=await request.json() as {confirmed?:boolean};return NextResponse.json(await deleteDashboardDataSource((await params).id,body.confirmed===true));}catch(error){return NextResponse.json({message:error instanceof Error?error.message:"无法删除数据源"},{status:422});}}

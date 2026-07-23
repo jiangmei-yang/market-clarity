@@ -1,0 +1,5 @@
+import {NextResponse} from "next/server";
+import {deleteNaturalStrategy,getNaturalStrategy,updateNaturalStrategy} from "@/app/lib/natural-language-strategy-server";
+export async function GET(_:Request,{params}:{params:Promise<{id:string}>}){try{return NextResponse.json(await getNaturalStrategy((await params).id));}catch(error){return NextResponse.json({message:error instanceof Error?error.message:"策略不存在"},{status:404});}}
+export async function PUT(request:Request,{params}:{params:Promise<{id:string}>}){try{return NextResponse.json({strategy:await updateNaturalStrategy((await params).id,await request.json())});}catch(error){const message=error instanceof Error?error.message:"策略修改失败";return NextResponse.json({message},{status:message.includes("确认")?409:422});}}
+export async function DELETE(request:Request,{params}:{params:Promise<{id:string}>}){try{const body=await request.json().catch(()=>({})) as {confirmed?:boolean};return NextResponse.json(await deleteNaturalStrategy((await params).id,body.confirmed===true));}catch(error){const message=error instanceof Error?error.message:"策略删除失败";return NextResponse.json({message},{status:message.includes("确认")?409:422});}}

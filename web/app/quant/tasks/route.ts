@@ -1,0 +1,3 @@
+import {NextResponse} from "next/server";import {listQuantState,saveNewQuantTask} from "@/app/lib/quant-research-server";
+export async function GET(){try{return NextResponse.json(await listQuantState());}catch(error){return NextResponse.json({message:error instanceof Error?error.message:"无法读取任务"},{status:401});}}
+export async function POST(request:Request){try{const body=await request.json() as {goal?:unknown};if(typeof body.goal!=="string"||!body.goal.trim())return NextResponse.json({message:"请描述研究目标"},{status:422});return NextResponse.json({task:await saveNewQuantTask(body.goal),requires_confirmation:true},{status:201});}catch(error){return NextResponse.json({message:error instanceof Error?error.message:"无法创建任务"},{status:422});}}

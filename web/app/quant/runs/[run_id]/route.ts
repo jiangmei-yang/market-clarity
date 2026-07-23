@@ -1,0 +1,3 @@
+import {NextResponse} from "next/server";
+import {readUserSnapshot} from "@/app/lib/user-snapshot";
+export async function GET(_:Request,{params}:{params:Promise<{run_id:string}>}){const {run_id}=await params;const state=await readUserSnapshot();if(state.status!=="ready")return NextResponse.json({message:"请先登录"},{status:401});const snapshot=state.snapshot as {strategyRuns?:Array<{run_id:string}>;strategyBacktestHistory?:Array<{id:string}>};const run=snapshot.strategyRuns?.find(item=>item.run_id===run_id)??snapshot.strategyBacktestHistory?.find(item=>item.id===run_id);return run?NextResponse.json({run,allow_trade:false}):NextResponse.json({message:"运行记录不存在"},{status:404});}

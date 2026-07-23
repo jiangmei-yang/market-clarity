@@ -1,0 +1,3 @@
+import {NextResponse} from "next/server";
+import {compileGoalToDSL,parseQuantGoal,routeQuantEngine,type QuantEngineId} from "@/app/lib/quant-engine-router";
+export async function POST(request:Request){try{const body=await request.json() as {goal?:string;engine?:QuantEngineId};const goal=parseQuantGoal(String(body.goal??""));const route=routeQuantEngine(goal,body.engine);return NextResponse.json({goal,engine_route:route,strategy:compileGoalToDSL(goal,route),status:route.execution_status,requires_confirmation:true,allow_live_order:false});}catch(error){return NextResponse.json({status:"failed",message:error instanceof Error?error.message:"研究方案生成失败",allow_live_order:false},{status:400});}}
