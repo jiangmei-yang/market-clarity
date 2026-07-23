@@ -231,8 +231,11 @@ export async function createAgentTask(input:{goal:string;route?:string;selected_
   if(needsWorkspace){const previewResult=await createAssistantPreview(goal,current.id);workspacePatch=previewResult.parsed;if(workspacePatch.canApply)workspaceCommandId=previewResult.commandId;themeSchema=themePatchFromRequirements(extraction.style_requirements.length?extraction.style_requirements:[goal],workspacePatch.preview.theme)?.themeSchema;}
   const workspaceFailed=needsWorkspace&&!workspacePatch?.canApply;
   const incompleteTools=toolCalls.filter((call)=>["missing","missing_input","insufficient_sample","not_executed","unavailable"].includes(String((call.output as {data_status?:string})?.data_status??"")));
-  const needsInput=extraction.missing_information.length>0&&(workspaceFailed||matched.length===0||incompleteTools.length===toolCalls.length);
-  const request=inputRequest(extraction.missing_information);
+  const clarificationQuestions=extraction.missing_information.length
+    ? extraction.missing_information
+    : workspacePatch?.questions??[];
+  const needsInput=clarificationQuestions.length>0&&(workspaceFailed||matched.length===0||incompleteTools.length===toolCalls.length);
+  const request=inputRequest(clarificationQuestions);
   const steps:AgentPlanStep[]=[{id:"step_1",title:"理解目标与当前上下文",tool:null,status:"completed",requires_confirmation:false},...matched.slice(0,6).map((item,index)=>({id:`step_${index+2}`,title:item.name,tool:item.toolId,status:(item.permissionLevel==="safe"?(toolCalls.find((call)=>call.tool_id===item.toolId)?.status??"pending"):"pending") as AgentPlanStep["status"],requires_confirmation:item.permissionLevel!=="safe"})),...(needsWorkspace?[{id:`step_${matched.length+2}`,title:"生成工作台修改预览",tool:"workspace_orchestrator",status:workspacePatch?.canApply?"completed" as const:needsInput?"awaiting_input" as const:"failed" as const,requires_confirmation:true}]:[])];
   const sources=[...new Map(toolCalls.flatMap((call)=>call.sources).map((item)=>[`${item.source_id}:${item.status}`,item])).values()];const warnings=[...extraction.risk_constraints];if(plannerMode==="local_fallback")warnings.push("当前没有可用的真实 AI Provider；任务结构由本地 Registry 匹配生成，不会冒充模型规划。");
   const toolHealth=toolCalls.length?aggregateReliability(toolCalls.map((call)=>call.reliability),"Agent 工具链"):reliability({status:plannerMode==="provider"?"healthy":"degraded",message:plannerMode==="provider"?"规划模型可用":"使用本地 Registry 降级规划",warnings:plannerMode==="provider"?[]:["未调用真实 AI 模型"],allow_signal:false});const failedCalls=toolCalls.filter((call)=>call.status==="failed");if(failedCalls.length)warnings.push(`部分结果缺失：${failedCalls.map((call)=>call.tool_id).join("、")} 可单独重试。`);
