@@ -96,6 +96,21 @@ test("evaluates the real assistant policy with explainable, negation-aware crite
   assert.match(runner, /风险表达：/);
 });
 
+test("runs three reproducible Agent tasks without presenting them as user evidence",()=>{
+  const scoring=read("app/lib/agent-functional-evaluation.ts");
+  const route=read("app/api/evaluation/agent/route.ts");
+  const page=read("app/evaluation/page.tsx");
+  assert.match(scoring,/id:"beginner"/);
+  assert.match(scoring,/id:"portfolio"/);
+  assert.match(scoring,/id:"research"/);
+  assert.match(scoring,/不是外部用户满意度、留存或付费证据/);
+  assert.match(scoring,/不擅自创建提醒、自选或模拟交易/);
+  assert.match(scoring,/返回真实行情与价格/);
+  assert.match(route,/尚未连接真实模型/);
+  assert.match(route,/cancelAgentTask/);
+  assert.match(page,/AgentFunctionalEvaluationRunner/);
+});
+
 test("provides a clearly labelled 90-second teaching walkthrough",()=>{
   const demo=read("app/components/demo-walkthrough.tsx");
   const page=read("app/demo/page.tsx");
@@ -187,7 +202,7 @@ test("keeps the fifth judge score tied to measured data evidence",()=>{
 test("keeps the 95-point claim behind external evidence gates",()=>{
   const audit=read("MVP_95_COMPLETION_AUDIT.md");
   assert.match(audit,/已部署版本的可辩护课程分为 \*\*82\/100\*\*/);
-  assert.match(audit,/候选版本为 \*\*85\/100\*\*/);
+  assert.match(audit,/候选版本为 \*\*86\/100\*\*/);
   assert.match(audit,/此前 92 分的判断忽略了/);
   assert.match(audit,/0 位外部参与者/);
   assert.match(audit,/固定 20 题为 19\/20/);
