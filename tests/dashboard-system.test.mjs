@@ -1,8 +1,19 @@
 import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
 import test from "node:test";
+import ts from "typescript";
 
 const read=(path)=>readFile(new URL(path,import.meta.url),"utf8");
+const asDataUrl=(source)=>`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
+
+const personalSource=await read("../app/lib/personal-workbench.ts");
+const personalCompiled=ts.transpileModule(personalSource,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
+const personalUrl=asDataUrl(personalCompiled);
+const dashboardSource=await read("../app/lib/dashboard-system.ts");
+const dashboardCompiled=ts.transpileModule(dashboardSource,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText
+  .replace('from "./personal-workbench"','from "'+personalUrl+'"');
+const dashboard=await import(asDataUrl(dashboardCompiled));
+const personal=await import(personalUrl);
 
 test("defines versioned dashboard, module, data-source and refresh schemas",async()=>{
   const source=await read("../app/lib/dashboard-system.ts");
@@ -87,4 +98,42 @@ test("publishes the modular dashboard endpoints",async()=>{
   assert.match(files[8],/requires_confirmation:true/);
   assert.match(files[9],/confirmed===true/);
   assert.match(files[10],/validateDashboardWorkspace/);
+});
+
+test("supports only compatible visualization renderers and applies the validated patch",()=>{
+  const workspace=dashboard.normalizeDashboardWorkspace(personal.createWorkspace("active"));
+  const risk=workspace.modules.find((item)=>item.type==="portfolio_risk");
+  const chart=workspace.modules.find((item)=>item.type==="technical_chart");
+  assert.ok(risk);
+  assert.ok(chart);
+
+  const riskDefinition=dashboard.DASHBOARD_MODULE_REGISTRY.find((item)=>item.moduleId==="portfolio_risk");
+  const chartDefinition=dashboard.DASHBOARD_MODULE_REGISTRY.find((item)=>item.moduleId==="technical_chart");
+  assert.deepEqual(riskDefinition.uiSchema.visualizations,["gauge","metric","table","line"]);
+  assert.deepEqual(chartDefinition.uiSchema.visualizations,["candlestick","line"]);
+
+  const patch=dashboard.validateDashboardPatch({
+    workspaceId:workspace.id,
+    baseVersion:workspace.version,
+    changes:[{action:"set_visualization",instanceId:risk.instanceId,value:"gauge"}],
+    summary:"把持仓风险改成仪表",
+  },workspace);
+  const next=dashboard.applyDashboardPatch(workspace,patch);
+  assert.equal(next.modules.find((item)=>item.instanceId===risk.instanceId).visualization,"gauge");
+  assert.equal(next.version,workspace.version+1);
+
+  assert.throws(()=>dashboard.validateDashboardPatch({
+    workspaceId:workspace.id,
+    baseVersion:workspace.version,
+    changes:[{action:"set_visualization",instanceId:chart.instanceId,value:"gauge"}],
+  },workspace),/可视化与模块不兼容/);
+});
+
+test("translates natural-language visualization changes into an auditable patch",()=>{
+  const workspace=dashboard.normalizeDashboardWorkspace(personal.createWorkspace("risk_control"));
+  const risk=workspace.modules.find((item)=>item.type==="portfolio_risk");
+  const patch=dashboard.interpretDashboardInstruction(workspace,"把持仓风险改成仪表并放大为全宽");
+  assert.ok(patch.changes.some((item)=>item.action==="set_visualization"&&item.instanceId===risk.instanceId&&item.value==="gauge"));
+  assert.ok(patch.changes.some((item)=>item.action==="resize_module"&&item.instanceId===risk.instanceId&&item.position.w===12));
+  assert.equal(patch.requiresConfirmation,true);
 });

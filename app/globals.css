@@ -2363,6 +2363,19 @@ svg { stroke-width: 1.8; }
 .agent-missing > strong { display: block; margin-bottom: 5px; font-size: 12px; }
 .agent-missing p, .agent-warnings p { margin: 3px 0; display: flex; align-items: flex-start; gap: 7px; color: var(--muted-foreground); font-size: 12px; line-height: 1.55; }
 .agent-missing svg, .agent-warnings svg { width: 14px; height: 14px; margin-top: 2px; flex: 0 0 auto; color: var(--gold-strong); }
+.agent-input-request { grid-column: 1 / -1; border-color: color-mix(in oklch, var(--primary), var(--border) 56%) !important; }
+.agent-input-request > header { background: color-mix(in oklch, var(--primary), transparent 95%); }
+.agent-input-fields { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 0; }
+.agent-input-fields fieldset { min-width: 0; margin: 0; padding: 16px; border: 0; border-right: 1px solid var(--border); }
+.agent-input-fields fieldset:last-child { border-right: 0; }
+.agent-input-fields legend { padding: 0; color: var(--foreground); font-size: 13px; font-weight: 700; }
+.agent-input-fields p { min-height: 38px; margin: 5px 0 12px; color: var(--muted-foreground); font-size: 12px; line-height: 1.5; }
+.agent-choice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.agent-choice-grid button { min-height: 36px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--background); color: var(--muted-foreground); font-size: 12px; text-align: left; }
+.agent-choice-grid button:hover { border-color: color-mix(in oklch, var(--primary), var(--border) 40%); color: var(--foreground); }
+.agent-choice-grid button[data-selected="true"] { border-color: var(--primary); background: color-mix(in oklch, var(--primary), transparent 92%); color: var(--primary); font-weight: 700; }
+.agent-input-request > footer { min-height: 58px; padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--border); }
+.agent-input-request > footer span { color: var(--muted-foreground); font-size: 12px; }
 .agent-plan { grid-row: span 2; }
 .agent-plan > header > div > span { max-width: 760px; }
 .agent-plan > header > div > span strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2415,6 +2428,25 @@ svg { stroke-width: 1.8; }
 .agent-announcement-list a { flex: 0 0 auto; color: var(--primary); font-size: 12px; font-weight: 650; text-decoration: none; }
 .agent-patch { grid-column: 1 / -1; border-color: color-mix(in oklch, var(--primary), var(--border) 44%) !important; }
 .agent-patch h2, .agent-proposal h2 { margin: 16px 16px 8px; font-size: 17px; line-height: 1.45; }
+.agent-workspace-diff { margin: 12px 16px 16px; display: grid; grid-template-columns: minmax(0,1fr) 34px minmax(0,1fr); align-items: stretch; gap: 10px; }
+.agent-diff-arrow { display: grid; place-items: center; color: var(--primary); font-size: 22px; font-weight: 700; }
+.agent-workspace-mini { min-width: 0; padding: 10px; border: 1px solid var(--border); border-radius: 9px; background: color-mix(in oklch,var(--card),var(--secondary) 14%); }
+.agent-workspace-mini[data-side="after"] { border-color: color-mix(in oklch,var(--primary),var(--border) 45%); }
+.agent-workspace-mini > header { margin-bottom: 8px; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.agent-workspace-mini > header span { color: var(--muted-foreground); font-size: 12px; font-weight: 700; }
+.agent-workspace-mini > header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.agent-workspace-mini-grid { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: 5px; }
+.agent-workspace-mini-grid article { min-height: 38px; padding: 7px; display: flex; flex-direction: column; justify-content: space-between; border: 1px solid var(--border); border-radius: 5px; background: var(--background); }
+.agent-workspace-mini-grid article[data-width="full"] { grid-column: span 6; }
+.agent-workspace-mini-grid article[data-width="half"] { grid-column: span 3; }
+.agent-workspace-mini-grid article[data-width="third"] { grid-column: span 2; }
+.agent-workspace-mini-grid article[data-change="added"] { border-color: color-mix(in oklch,var(--primary),var(--border) 25%); background: color-mix(in oklch,var(--primary),transparent 93%); }
+.agent-workspace-mini-grid article[data-change="removed"] { opacity: .48; border-style: dashed; }
+.agent-workspace-mini-grid span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 700; }
+.agent-workspace-mini-grid small { color: var(--primary); font-size: 12px; }
+.agent-workflow-mini { margin-top: 8px; padding-top: 7px; display: flex; flex-wrap: wrap; gap: 3px; border-top: 1px solid var(--border); }
+.agent-workflow-mini span { color: var(--muted-foreground); font-size: 12px; }
+.agent-workflow-mini i { margin-right: 3px; color: var(--primary); font-style: normal; }
 .agent-patch-modules { padding: 0 16px 12px; display: flex; flex-wrap: wrap; gap: 6px; }
 .agent-patch-modules span { padding: 4px 8px; border: 1px solid color-mix(in oklch, var(--primary), var(--border) 68%); border-radius: 5px; background: var(--secondary); color: var(--primary); font-size: 12px; font-weight: 700; }
 .agent-theme-preview { margin: 0 16px 14px; padding: 12px 14px; display: grid; grid-template-columns: 34px minmax(0,1fr); align-items: center; gap: 11px; border: 1px solid var(--border); background: var(--background); }
@@ -2446,7 +2478,8 @@ svg { stroke-width: 1.8; }
 .spin { animation: agent-spin 1s linear infinite; }
 @keyframes agent-spin { to { transform: rotate(360deg); } }
 @media (max-width: 1100px) { .agent-task-grid { grid-template-columns: 1fr; }.agent-plan { grid-row: auto; }.agent-result, .agent-patch, .agent-proposal, .agent-actions { grid-column: 1; } }
-@media (max-width: 900px) { .agent-os { padding: 18px 14px 96px; }.agent-os-header { grid-template-columns: 1fr; align-items: start; }.agent-intent-grid { grid-template-columns: repeat(2,1fr); }.agent-intent-grid article:nth-child(2) { border-right: 0; }.agent-intent-grid article:nth-child(-n+2) { border-bottom: 1px solid var(--border); }.agent-command > footer, .agent-actions { align-items: stretch; flex-direction: column; }.agent-actions > div:last-child { justify-content: flex-start; }.agent-result > article { grid-template-columns: 1fr; gap: 4px; }.agent-risk-metrics { grid-template-columns: 1fr; }.agent-risk-metrics > div { border-right: 0; border-bottom: 1px solid var(--border); }.agent-risk-metrics > div:last-child { border-bottom: 0; } }
+@media (max-width: 900px) { .agent-os { padding: 18px 14px 96px; }.agent-os-header { grid-template-columns: 1fr; align-items: start; }.agent-intent-grid { grid-template-columns: repeat(2,1fr); }.agent-intent-grid article:nth-child(2) { border-right: 0; }.agent-intent-grid article:nth-child(-n+2) { border-bottom: 1px solid var(--border); }.agent-input-fields { grid-template-columns: 1fr; }.agent-input-fields fieldset { border-right: 0; border-bottom: 1px solid var(--border); }.agent-command > footer, .agent-actions { align-items: stretch; flex-direction: column; }.agent-actions > div:last-child { justify-content: flex-start; }.agent-result > article { grid-template-columns: 1fr; gap: 4px; }.agent-risk-metrics { grid-template-columns: 1fr; }.agent-risk-metrics > div { border-right: 0; border-bottom: 1px solid var(--border); }.agent-risk-metrics > div:last-child { border-bottom: 0; } }
+@media (max-width: 720px) { .agent-workspace-diff { grid-template-columns: 1fr; }.agent-diff-arrow { transform: rotate(90deg); } }
 @media (prefers-reduced-motion: reduce) { .spin { animation-duration: .01ms !important; animation-iteration-count: 1 !important; } }
 
 /* Goal-first quant research router */
@@ -2497,3 +2530,259 @@ svg { stroke-width: 1.8; }
 .dashboard-source-list{display:flex;flex-direction:column;gap:6px}.dashboard-source-list article{padding:8px;display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:6px;border:1px solid var(--border);border-radius:8px}.dashboard-source-list article>div{min-width:0;display:flex;flex-direction:column;gap:2px}.dashboard-source-list strong,.dashboard-source-form>strong,.dashboard-danger-zone>strong{font-size:12px}.dashboard-source-list small,.dashboard-source-form small{color:var(--muted-foreground);font-size:12px;line-height:1.45;overflow-wrap:anywhere}.dashboard-source-form{margin-top:12px;padding:10px;display:flex;flex-direction:column;gap:7px;border:1px solid var(--border);border-radius:8px;background:var(--secondary)}.dashboard-danger-zone{margin-top:14px;padding-top:12px;display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--border)}.dashboard-danger-zone>div{display:flex;flex-wrap:wrap;gap:5px}.dashboard-danger-zone>div button{min-height:28px;padding:0 7px;border:1px solid var(--border);border-radius:6px;background:var(--background);color:var(--muted-foreground);font-size:12px}.dashboard-danger-zone>div button:hover{border-color:var(--destructive);color:var(--destructive)}
 .dashboard-theme-preview{padding:12px;display:grid;grid-template-columns:repeat(3,1fr);gap:5px;border:1px solid var(--border);border-radius:8px;background:var(--secondary)}.dashboard-theme-preview i{height:28px;border-radius:5px;background:var(--primary)}.dashboard-theme-preview i:nth-child(2){background:var(--gold-soft)}.dashboard-theme-preview i:nth-child(3){background:var(--muted)}.dashboard-theme-preview span{grid-column:1/-1;color:var(--muted-foreground);font-size:12px;line-height:1.5}.dashboard-version-list article>div:last-child{flex:none;display:flex;gap:4px}.dashboard-compare-note{margin-top:12px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--secondary)}.dashboard-compare-note strong{font-size:12px}.dashboard-compare-note p{margin:5px 0 0;color:var(--muted-foreground);font-size:12px;line-height:1.5}.dashboard-compare-note code{font-size:12px}
 .shared-dashboard-page{width:min(1180px,calc(100% - 48px));margin:0 auto;padding:48px 0;color:var(--foreground)}.shared-dashboard-page>header{padding:24px 0;display:flex;align-items:flex-end;justify-content:space-between;gap:24px;border-bottom:1px solid var(--border)}.shared-dashboard-page>header span,.shared-dashboard-page>footer{display:flex;align-items:center;gap:7px;color:var(--primary);font-size:12px;font-weight:700}.shared-dashboard-page h1{margin:8px 0 5px;font-size:30px;letter-spacing:-.03em}.shared-dashboard-page p{margin:0;color:var(--muted-foreground);font-size:13px}.shared-clone-action{display:flex;flex-direction:column;align-items:flex-end;gap:5px}.shared-clone-action button{min-height:38px;padding:0 13px;display:flex;align-items:center;gap:7px;border:1px solid var(--primary);border-radius:8px;background:var(--primary);color:var(--primary-foreground);font-weight:700}.shared-clone-action small{color:var(--destructive);font-size:12px}.shared-dashboard-page svg{width:15px}.shared-dashboard-meta{padding:12px 0;display:flex;gap:18px;color:var(--muted-foreground);font-size:12px}.shared-dashboard-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.shared-dashboard-grid article{min-height:132px;padding:15px;display:flex;flex-direction:column;border:1px solid var(--border);border-radius:10px;background:var(--card)}.shared-dashboard-grid article>span{color:var(--primary);font-size:12px}.shared-dashboard-grid article>strong{margin:7px 0 auto;font-size:16px}.shared-dashboard-grid article>small{margin-top:4px;color:var(--muted-foreground);font-size:12px}.shared-dashboard-page>footer{margin-top:20px;padding:14px;border:1px solid var(--border);border-radius:8px;background:var(--secondary);color:var(--muted-foreground);font-weight:500}
+
+/* Dark workbench surfaces are defined below as one coherent theme. */
+.personal-shell[data-theme="dark_focus"] {
+  --background: oklch(0.175 0.018 255);
+  --card: oklch(0.215 0.022 255);
+  --card-foreground: oklch(0.95 0.008 248);
+  --foreground: oklch(0.95 0.008 248);
+  --muted: oklch(0.255 0.022 255);
+  --muted-foreground: oklch(0.76 0.018 248);
+  --primary: oklch(0.73 0.12 252);
+  --primary-foreground: oklch(0.16 0.024 255);
+  --secondary: oklch(0.275 0.038 258);
+  --secondary-foreground: oklch(0.91 0.018 248);
+  --accent: oklch(0.26 0.03 258);
+  --accent-foreground: oklch(0.94 0.01 248);
+  --destructive: oklch(0.69 0.16 28);
+  --border: oklch(0.345 0.024 255);
+  --input: oklch(0.4 0.028 255);
+  --ring: oklch(0.73 0.12 252);
+  --gold: oklch(0.72 0.12 78);
+  --gold-soft: oklch(0.265 0.045 78);
+  --gold-strong: oklch(0.83 0.105 82);
+  --up: oklch(0.7 0.17 28);
+  --down: oklch(0.7 0.13 158);
+  --dark-raised: oklch(0.24 0.024 255);
+  --dark-selected: oklch(0.29 0.05 255);
+  --dark-subtle: oklch(0.195 0.02 255);
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.personal-shell[data-theme="dark_focus"] .unified-sidebar,
+.personal-shell[data-theme="dark_focus"] .personal-sidebar {
+  border-color: var(--border);
+  background: var(--dark-subtle);
+}
+
+.personal-shell[data-theme="dark_focus"] .unified-brand,
+.personal-shell[data-theme="dark_focus"] .unified-account,
+.personal-shell[data-theme="dark_focus"] .personal-brand,
+.personal-shell[data-theme="dark_focus"] .personal-account {
+  border-color: var(--border);
+  background: var(--dark-subtle);
+  color: var(--foreground);
+}
+
+.personal-shell[data-theme="dark_focus"] .locale-switcher {
+  border-color: var(--border);
+  background: var(--card);
+}
+
+.personal-shell[data-theme="dark_focus"] .locale-switcher button:hover,
+.personal-shell[data-theme="dark_focus"] .locale-switcher button.active,
+.personal-shell[data-theme="dark_focus"] .unified-sidebar > nav > a:hover,
+.personal-shell[data-theme="dark_focus"] .personal-sidebar > nav a:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.personal-shell[data-theme="dark_focus"] .unified-sidebar > nav > a.active,
+.personal-shell[data-theme="dark_focus"] .personal-sidebar > nav a.active {
+  background: var(--dark-selected);
+  color: var(--primary);
+}
+
+.personal-shell[data-theme="dark_focus"] .personal-main,
+.personal-shell[data-theme="dark_focus"] .personal-content {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.personal-shell[data-theme="dark_focus"] .personal-topbar {
+  border-color: var(--border);
+  background: color-mix(in oklch, var(--background), transparent 4%);
+}
+
+.personal-shell[data-theme="dark_focus"] .personal-topbar select,
+.personal-shell[data-theme="dark_focus"] input,
+.personal-shell[data-theme="dark_focus"] textarea,
+.personal-shell[data-theme="dark_focus"] select {
+  border-color: var(--input);
+  background: var(--card);
+  color: var(--foreground);
+}
+
+.personal-shell[data-theme="dark_focus"] input::placeholder,
+.personal-shell[data-theme="dark_focus"] textarea::placeholder {
+  color: var(--muted-foreground);
+  opacity: 1;
+}
+
+.personal-shell[data-theme="dark_focus"] .personal-top-actions > a,
+.personal-shell[data-theme="dark_focus"] .personal-top-actions summary,
+.personal-shell[data-theme="dark_focus"] .personal-entry-grid > a,
+.personal-shell[data-theme="dark_focus"] .home-market-pulse > div,
+.personal-shell[data-theme="dark_focus"] .home-decision-brief,
+.personal-shell[data-theme="dark_focus"] .home-stock-focus,
+.personal-shell[data-theme="dark_focus"] .home-portfolio-strip,
+.personal-shell[data-theme="dark_focus"] .home-priority-alert,
+.personal-shell[data-theme="dark_focus"] .home-holding-switcher,
+.personal-shell[data-theme="dark_focus"] .home-ai-model,
+.personal-shell[data-theme="dark_focus"] .home-decision-evidence,
+.personal-shell[data-theme="dark_focus"] .personal-module-grid > article,
+.personal-shell[data-theme="dark_focus"] .portfolio-summary,
+.personal-shell[data-theme="dark_focus"] .exposure-explorer,
+.personal-shell[data-theme="dark_focus"] .workspace-theme-settings,
+.personal-shell[data-theme="dark_focus"] .workspace-settings,
+.personal-shell[data-theme="dark_focus"] .workspace-language {
+  border-color: var(--border);
+  background: var(--card);
+  color: var(--foreground);
+}
+
+.personal-shell[data-theme="dark_focus"] .personal-entry-grid > a.primary,
+.personal-shell[data-theme="dark_focus"] .personal-action-row.compact .personal-entry-grid > a.primary {
+  border-color: color-mix(in oklch, var(--primary), var(--border) 58%);
+  background: var(--dark-selected);
+}
+
+.personal-shell[data-theme="dark_focus"] .personal-entry-grid > a:hover {
+  border-color: var(--primary);
+  background: var(--dark-raised);
+  box-shadow: 0 4px 8px color-mix(in oklch, black, transparent 72%);
+}
+
+.personal-shell[data-theme="dark_focus"] .home-first-run > header,
+.personal-shell[data-theme="dark_focus"] .home-stock-search-results,
+.personal-shell[data-theme="dark_focus"] .home-stock-summary,
+.personal-shell[data-theme="dark_focus"] .home-decision-brief > footer,
+.personal-shell[data-theme="dark_focus"] .home-research-presets,
+.personal-shell[data-theme="dark_focus"] .home-stock-insight,
+.personal-shell[data-theme="dark_focus"] .ai-privacy-mode {
+  border-color: var(--border);
+  background: var(--dark-raised);
+  color: var(--foreground);
+}
+
+.personal-shell[data-theme="dark_focus"] .home-decision-facts article,
+.personal-shell[data-theme="dark_focus"] .home-stock-summary > div,
+.personal-shell[data-theme="dark_focus"] .home-holding-switcher button,
+.personal-shell[data-theme="dark_focus"] .home-check-list article,
+.personal-shell[data-theme="dark_focus"] .home-decision-evidence article {
+  border-color: var(--border);
+  background: transparent;
+  color: var(--foreground);
+}
+
+.personal-shell[data-theme="dark_focus"] .home-decision-facts article.attention {
+  background: var(--gold-soft);
+}
+
+.personal-shell[data-theme="dark_focus"] .home-start-actions > a:hover,
+.personal-shell[data-theme="dark_focus"] .home-holding-switcher button:hover,
+.personal-shell[data-theme="dark_focus"] .home-holding-switcher button:focus-visible,
+.personal-shell[data-theme="dark_focus"] .home-holding-switcher button.active,
+.personal-shell[data-theme="dark_focus"] .home-research-presets button:hover,
+.personal-shell[data-theme="dark_focus"] .home-research-presets button:focus-visible,
+.personal-shell[data-theme="dark_focus"] .home-research-presets button.active,
+.personal-shell[data-theme="dark_focus"] .home-research-presets a:hover,
+.personal-shell[data-theme="dark_focus"] .home-research-presets a:focus-visible {
+  border-color: var(--border);
+  background: var(--dark-selected);
+  color: var(--foreground);
+  box-shadow: none;
+}
+
+.personal-shell[data-theme="dark_focus"] .home-stock-search {
+  border-color: var(--input);
+  background: var(--dark-subtle);
+}
+
+.personal-shell[data-theme="dark_focus"] .home-stock-body,
+.personal-shell[data-theme="dark_focus"] .home-stock-chart {
+  background: var(--card);
+}
+
+.personal-shell[data-theme="dark_focus"] .home-chart-mode button,
+.personal-shell[data-theme="dark_focus"] .home-chart-legend button,
+.personal-shell[data-theme="dark_focus"] .home-chart-controls button {
+  color: var(--muted-foreground);
+}
+
+.personal-shell[data-theme="dark_focus"] .home-chart-mode button:hover,
+.personal-shell[data-theme="dark_focus"] .home-chart-mode button.active,
+.personal-shell[data-theme="dark_focus"] .home-chart-legend button:hover,
+.personal-shell[data-theme="dark_focus"] .home-chart-legend button.active,
+.personal-shell[data-theme="dark_focus"] .home-chart-controls button:hover,
+.personal-shell[data-theme="dark_focus"] .home-chart-controls button.active,
+.personal-shell[data-theme="dark_focus"] .home-chart-controls .home-brush-reset {
+  border-color: var(--border);
+  background: var(--dark-selected);
+  color: var(--primary);
+}
+
+.personal-shell[data-theme="dark_focus"] .home-chart-controls .home-event-jump:hover,
+.personal-shell[data-theme="dark_focus"] .home-chart-controls .home-event-jump:focus-visible {
+  border-color: var(--gold-strong);
+  background: var(--gold-soft);
+  color: var(--gold-strong);
+}
+
+.personal-shell[data-theme="dark_focus"] .home-stock-chart .chart-grid,
+.personal-shell[data-theme="dark_focus"] .home-stock-chart .chart-axis {
+  stroke: color-mix(in oklch, var(--border), var(--foreground) 10%);
+}
+
+.personal-shell[data-theme="dark_focus"] .home-stock-chart .chart-benchmark {
+  stroke: oklch(0.7 0.035 248);
+}
+
+.personal-shell[data-theme="dark_focus"] .home-stock-chart .chart-volume,
+.personal-shell[data-theme="dark_focus"] .home-chart-legend i.volume {
+  fill: color-mix(in oklch, var(--primary), transparent 35%);
+  background: color-mix(in oklch, var(--primary), transparent 35%);
+}
+
+.personal-shell[data-theme="dark_focus"] .home-chart-tooltip {
+  border-color: var(--border);
+  background: var(--dark-raised);
+  color: var(--foreground);
+  box-shadow: 0 6px 8px color-mix(in oklch, black, transparent 68%);
+}
+
+.personal-shell[data-theme="dark_focus"] .home-chart-navigator button,
+.personal-shell[data-theme="dark_focus"] .home-chart-empty button,
+.personal-shell[data-theme="dark_focus"] .home-chart-controls select,
+.personal-shell[data-theme="dark_focus"] .home-chart-controls .chart-fullscreen-toggle {
+  border-color: var(--border);
+  background: var(--dark-subtle);
+  color: var(--foreground);
+}
+
+.personal-shell[data-theme="dark_focus"] button:disabled,
+.personal-shell[data-theme="dark_focus"] a[aria-disabled="true"],
+.personal-shell[data-theme="dark_focus"] input:disabled,
+.personal-shell[data-theme="dark_focus"] select:disabled {
+  background: var(--muted);
+  color: var(--muted-foreground);
+  opacity: 0.58;
+}
+
+.personal-shell[data-theme="dark_focus"] .badge,
+.personal-shell[data-theme="dark_focus"] [data-slot="badge"] {
+  border-color: var(--border);
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.personal-shell[data-theme="dark_focus"] .personal-disclaimer {
+  border-color: var(--border);
+  background: var(--dark-subtle);
+}
+
+.personal-shell[data-theme="dark_focus"] .home-stock-focus.chart-fullscreen::before {
+  background: color-mix(in oklch, black, transparent 18%);
+}

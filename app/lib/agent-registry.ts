@@ -86,7 +86,7 @@ export const WORKFLOW_REGISTRY:Record<string,WorkspaceWorkflowStep[]>={
 };
 
 export type GoalExtraction={goal:string;context:Record<string,unknown>;user_stage:"beginner"|"learner"|"experienced"|"professional"|"unknown";data_requirements:string[];analysis_requirements:string[];tool_requirements:string[];ui_requirements:string[];workflow_requirements:string[];automation_requirements:string[];style_requirements:string[];risk_constraints:string[];missing_information:string[];risk_level:"low"|"medium"|"high"|"restricted"};
-export type AgentPlanStep={id:string;title:string;tool:string|null;status:"pending"|"running"|"completed"|"failed"|"cancelled";requires_confirmation:boolean};
+export type AgentPlanStep={id:string;title:string;tool:string|null;status:"pending"|"running"|"completed"|"failed"|"cancelled"|"awaiting_input";requires_confirmation:boolean};
 export type ToolProposal={name:string;purpose:string;inputs:string[];outputs:string[];data_sources:string[];permissions:string[];risks:string[];status:"proposal";requires_human_review:true};
 export type ThemeSchema={theme_id:string;name:string;mode:"light"|"dark";colors:Record<string,string>;typography:{scale:string};spacing:{density:"compact"|"comfortable"|"spacious"};border_radius:{style:string};density:"compact"|"comfortable"|"spacious";chart_style:{type:"line"|"area";market_colors:"cn"|"accessible"};motion:"none"|"subtle"|"standard";risk_visualization:{uses_text:boolean;uses_icon:boolean;uses_color:boolean};accessibility:{high_contrast:boolean;reduced_motion:boolean}};
 

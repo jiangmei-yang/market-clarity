@@ -72,6 +72,37 @@ test("keeps Agent planning general, auditable, and honest about missing social d
   assert.match(proposalRoute, /requires_human_review:true/);
 });
 
+test("pauses for structured input instead of misreporting missing context as failure",async()=>{
+  const [agent,registry,component,continueRoute]=await Promise.all([
+    readFile(new URL("../app/lib/agent-os.ts",import.meta.url),"utf8"),
+    readFile(new URL("../app/lib/agent-registry.ts",import.meta.url),"utf8"),
+    readFile(new URL("../app/components/agent-workspace.tsx",import.meta.url),"utf8"),
+    readFile(new URL("../app/agent/tasks/[task_id]/continue/route.ts",import.meta.url),"utf8"),
+  ]);
+  assert.match(agent,/status:"planning"\|"awaiting_input"\|"awaiting_confirmation"/);
+  assert.match(agent,/needsInput\?"awaiting_input"/);
+  assert.match(agent,/!needsInput&&\(workspaceFailed\|\|nothingSucceeded\)/);
+  assert.match(agent,/input_request:needsInput\?request:undefined/);
+  assert.match(agent,/type:"choice"\|"text"/);
+  assert.match(agent,/options:\["首页顶部","主要内容之后","右侧辅助区","由系统安排"\]/);
+  assert.match(registry,/status:"pending"\|"running"\|"completed"\|"failed"\|"cancelled"\|"awaiting_input"/);
+  assert.match(component,/task\.status==="awaiting_input"/);
+  assert.match(component,/继续这项任务/);
+  assert.match(component,/body:JSON\.stringify\(\{answers\}\)/);
+  assert.match(continueRoute,/continueAgentTask/);
+  assert.match(continueRoute,/body\.answers\?\?\{\}/);
+});
+
+test("continues the same task id and replaces the temporary continuation record",async()=>{
+  const agent=await readFile(new URL("../app/lib/agent-os.ts",import.meta.url),"utf8");
+  assert.match(agent,/export async function continueAgentTask\(taskId:string,answers:Record<string,string>\)/);
+  assert.match(agent,/task_id:task\.task_id/);
+  assert.match(agent,/created_at:task\.created_at/);
+  assert.match(agent,/continuation_count:\(task\.continuation_count\?\?0\)\+1/);
+  assert.match(agent,/filter\(\(item\)=>item\.task_id!==task\.task_id&&item\.task_id!==generated\.task_id\)/);
+  assert.match(agent,/concat\(continued\)/);
+});
+
 test("supports a source-transparent social observation workspace without inventing trends", () => {
   const current=workspace.createWorkspace("custom");
   const result=workspace.previewWorkspaceChange(current,"现在小红书上大家在讨论什么？把热门主题放进我的工作台");
