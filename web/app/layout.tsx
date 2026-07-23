@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { GlobalAIAssistantProvider } from "./components/global-ai-assistant";
 import { SystemReliabilityCenter } from "./components/system-reliability-center";
 import { ContextualGuide } from "./components/contextual-guide";
+import { I18nProvider } from "./i18n";
 import "./globals.css";
 import "./capability-guide.css";
 import "./quant-workspace.css";
@@ -28,5 +29,5 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="zh-CN"><body><TooltipProvider delay={350}><GlobalAIAssistantProvider>{children}<ContextualGuide/><SystemReliabilityCenter/></GlobalAIAssistantProvider></TooltipProvider></body></html>;
+  return <html lang="zh-CN"><body><I18nProvider><TooltipProvider delay={350}><GlobalAIAssistantProvider>{children}<ContextualGuide/><SystemReliabilityCenter/></GlobalAIAssistantProvider></TooltipProvider></I18nProvider></body></html>;
 }

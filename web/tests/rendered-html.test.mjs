@@ -53,8 +53,10 @@ test("keeps onboarding contextual and navigation grouped by user goal", async ()
   assert.match(guide, /path=>path==="\/analysis"/);
   assert.match(guide, /path=>path==="\/etf-tool"/);
   assert.match(guide, /可操作指引/);
-  assert.match(guide, /anxin:guide:/);
-  assert.match(guide, /已完成 \{done\.length\}/);
+  assert.match(guide, /market-clarity:guide:/);
+  assert.match(guide, /pick\(isEnglish,"已完成","Completed"\)/);
+  assert.match(navigation, /locale-switcher/);
+  assert.match(navigation, /setLocale\("en"\)/);
   assert.match(workbench, /近 60 个交易日价格与成交量走势图/);
   assert.match(workbench, /60日高点/);
   assert.match(workbench, /最新可核实事件/);

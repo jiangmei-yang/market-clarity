@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Check, CircleHelp, ExternalLink, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
+import { pick, useI18n } from "../i18n";
 
 type GuideTask = { title:string; body:string; action:string; href:string };
 type Guide = { title:string; summary:string; tasks:GuideTask[] };
@@ -62,11 +63,60 @@ const FALLBACK:Guide={title:"本页快速上手",summary:"先完成一个最小�
   {title:"核对来源和下一步",body:"结论应同时显示数据时间与仍然缺失的信息。",action:"查看产品能力",href:"/features"},
 ]};
 
+const EN_GUIDES: Array<{match:(path:string)=>boolean;guide:Guide}> = [
+  {match:path=>path==="/",guide:{title:"Workspace quick start",summary:"Complete any one task to see the product with real content.",tasks:[
+    {title:"Open a real stock",body:"See price, events and financials together in the default research view.",action:"Open Kweichow Moutai",href:"/analysis?view=research&code=600519"},
+    {title:"Check an external claim",body:"Separate verifiable facts, inference and missing sources.",action:"Start a claim check",href:"/opportunity"},
+    {title:"Complete the decision loop",body:"Change the amount and rationale, then see how the risk numbers respond.",action:"Open the demo",href:"/demo"},
+  ]}},
+  {match:path=>path==="/analysis",guide:{title:"Using stock research",summary:"Start with one evidence-reading pass, not every available indicator.",tasks:[
+    {title:"Align price and events",body:"Read time, range and event markers first. Proximity in time does not prove causality.",action:"Load Kweichow Moutai",href:"/analysis?view=research&code=600519"},
+    {title:"Test another stock",body:"Confirm that a company name or six-digit code opens a real research view.",action:"Open China Merchants Bank",href:"/analysis?view=research&code=600036"},
+    {title:"Take research into a review",body:"Enter size, rationale and exit conditions only when you are considering action.",action:"Open pre-trade review",href:"/analysis?view=decision&code=600519"},
+  ]}},
+  {match:path=>path==="/opportunity",guide:{title:"Using claim check",summary:"Use a claim you actually saw in news or social media.",tasks:[
+    {title:"Paste the original wording",body:"Keeping the original phrasing helps detect return claims, urgency and missing evidence.",action:"Go to the input",href:"/opportunity#main-content"},
+    {title:"Separate fact from inference",body:"Look for clickable sources before assessing the conclusion.",action:"View the sample workflow",href:"/demo"},
+    {title:"Connect it to your exposure",body:"Add a simulated holding to see whether the claim increases an existing concentration.",action:"Open my portfolio",href:"/portfolio"},
+  ]}},
+  {match:path=>path==="/portfolio",guide:{title:"Using portfolio checks",summary:"No brokerage connection is needed. Start with simulated amounts.",tasks:[
+    {title:"Add one holding",body:"A stock code and amount are enough for a basic exposure check.",action:"Research a stock",href:"/analysis?view=research"},
+    {title:"Import trade history",body:"A CSV can reconstruct open quantity, realized P&L and fees.",action:"Open trade review",href:"/trade-tool"},
+    {title:"Set your review limits",body:"Position limits come from your confirmation, not from a model.",action:"Open my rules",href:"/profile"},
+  ]}},
+  {match:path=>path==="/etf-tool",guide:{title:"Using ETF diagnosis",summary:"Add at least two ETFs to make overlap meaningful.",tasks:[
+    {title:"Add the first ETF",body:"Search by name or code.",action:"Start searching",href:"/etf-tool#tool-main"},
+    {title:"Add a similar theme",body:"Compare underlying holdings rather than fund names alone.",action:"Return to diagnosis",href:"/etf-tool#tool-main"},
+    {title:"Connect it to the portfolio",body:"Review how overlap changes your overall exposure.",action:"Open my portfolio",href:"/portfolio"},
+  ]}},
+  {match:path=>path==="/quant",guide:{title:"Using quant research",summary:"Start with one testable, low-frequency rule.",tasks:[
+    {title:"Describe the research goal",body:"For example: check low-volatility ETFs weekly and simulate first.",action:"Open strategy input",href:"/quant#tool-main"},
+    {title:"Confirm rules and costs",body:"Check the asset, frequency, fees, slippage and data period.",action:"Review the strategy",href:"/quant#tool-main"},
+    {title:"Compare stability",body:"Read drawdown, out-of-sample results and turnover—not cumulative return alone.",action:"View product limits",href:"/features"},
+  ]}},
+  {match:path=>path==="/agent",guide:{title:"Using the task agent",summary:"Describe the outcome. The system organizes tools; changes still need confirmation.",tasks:[
+    {title:"Describe an outcome, not a tool",body:"For example: find ETF overlap and place the risk module on my workspace.",action:"Open task input",href:"/agent#tool-main"},
+    {title:"Review the execution plan",body:"Check sources, tool steps and which actions need approval.",action:"View available capabilities",href:"/features"},
+    {title:"Apply or undo changes",body:"Workspace changes are previewed first and keep version history.",action:"Edit workspace",href:"/workspace"},
+  ]}},
+  {match:path=>path==="/features",guide:{title:"Using the product guide",summary:"Check current capabilities, entry points and limits.",tasks:[
+    {title:"Understand the core loop",body:"See how the information and decision layers connect.",action:"View the capability flow",href:"/features#capability-flow"},
+    {title:"Check delivery status",body:"Separate available, beta and unavailable capabilities.",action:"View the capability matrix",href:"/features#capability-matrix"},
+    {title:"Ask about a capability",body:"Answers include source, entry point, version and update time.",action:"Ask the capability index",href:"/features#capability-ask"},
+  ]}},
+];
+
+const EN_FALLBACK: Guide = {title:"Quick start",summary:"Complete one small task before deciding whether to go deeper.",tasks:[
+  {title:"Confirm the page purpose",body:"The header explains what the tool does and its current data status.",action:"View the page header",href:"#tool-main"},
+  {title:"Provide the minimum input",body:"Enter only what this task needs.",action:"Go to main content",href:"#tool-main"},
+  {title:"Check sources and next steps",body:"A conclusion should show its data time and missing information.",action:"View product capabilities",href:"/features"},
+]};
+
 export function ContextualGuide(){
-  const pathname=usePathname();const guide=useMemo(()=>GUIDES.find(item=>item.match(pathname))?.guide??FALLBACK,[pathname]);const storageKey=`anxin:guide:${pathname}`;
+  const {isEnglish}=useI18n();const pathname=usePathname();const guide=useMemo(()=>isEnglish?(EN_GUIDES.find(item=>item.match(pathname))?.guide??EN_FALLBACK):(GUIDES.find(item=>item.match(pathname))?.guide??FALLBACK),[pathname,isEnglish]);const storageKey=`market-clarity:guide:${pathname}`;
   const[open,setOpen]=useState(false);const[progress,setProgress]=useState<Record<string,number[]>>({});const done=progress[storageKey]??[];
   const save=(next:number[])=>{setProgress(current=>({...current,[storageKey]:next}));window.localStorage.setItem(storageKey,JSON.stringify(next));};
   const toggle=(index:number)=>save(done.includes(index)?done.filter(item=>item!==index):[...done,index]);
   const show=()=>{let stored:number[]=[];try{stored=JSON.parse(window.localStorage.getItem(storageKey)??"[]")}catch{stored=[]}setProgress(current=>({...current,[storageKey]:stored}));setOpen(true);};
-  return <><button className="context-guide-trigger" onClick={show} aria-label={`打开${guide.title}`}><CircleHelp/><span>本页怎么用</span>{done.length>0&&<i>{done.length}/3</i>}</button>{open&&<div className="context-guide-backdrop" role="presentation" onMouseDown={event=>{if(event.currentTarget===event.target)setOpen(false)}}><aside className="context-guide-panel" role="dialog" aria-modal="true" aria-labelledby="context-guide-title"><header><div><span>可操作指引</span><h2 id="context-guide-title">{guide.title}</h2><p>{guide.summary}</p></div><button onClick={()=>setOpen(false)} aria-label="关闭指引"><X/></button></header><div className="guide-task-list">{guide.tasks.map((task,index)=><article className={done.includes(index)?"done":""} key={task.title}><button className="guide-task-check" onClick={()=>toggle(index)} aria-label={done.includes(index)?`取消完成${task.title}`:`标记完成${task.title}`}><Check/></button><div><strong>{task.title}</strong><p>{task.body}</p><Link href={task.href} onClick={()=>{if(!done.includes(index))save([...done,index]);setOpen(false)}}>{task.action}<ExternalLink/></Link></div></article>)}</div><footer><span>已完成 {done.length} / {guide.tasks.length}</span><button onClick={()=>{save([]);window.localStorage.removeItem(storageKey)}}>重置进度</button></footer></aside></div>}</>;
+  return <><button className="context-guide-trigger" onClick={show} aria-label={`${pick(isEnglish,"打开","Open ")}${guide.title}`}><CircleHelp/><span>{pick(isEnglish,"本页怎么用","How to use this page")}</span>{done.length>0&&<i>{done.length}/3</i>}</button>{open&&<div className="context-guide-backdrop" role="presentation" onMouseDown={event=>{if(event.currentTarget===event.target)setOpen(false)}}><aside className="context-guide-panel" role="dialog" aria-modal="true" aria-labelledby="context-guide-title"><header><div><span>{pick(isEnglish,"可操作指引","Interactive guide")}</span><h2 id="context-guide-title">{guide.title}</h2><p>{guide.summary}</p></div><button onClick={()=>setOpen(false)} aria-label={pick(isEnglish,"关闭指引","Close guide")}><X/></button></header><div className="guide-task-list">{guide.tasks.map((task,index)=><article className={done.includes(index)?"done":""} key={task.title}><button className="guide-task-check" onClick={()=>toggle(index)} aria-label={done.includes(index)?`${pick(isEnglish,"取消完成","Mark incomplete: ")}${task.title}`:`${pick(isEnglish,"标记完成","Mark complete: ")}${task.title}`}><Check/></button><div><strong>{task.title}</strong><p>{task.body}</p><Link href={task.href} onClick={()=>{if(!done.includes(index))save([...done,index]);setOpen(false)}}>{task.action}<ExternalLink/></Link></div></article>)}</div><footer><span>{pick(isEnglish,"已完成","Completed")} {done.length} / {guide.tasks.length}</span><button onClick={()=>{save([]);window.localStorage.removeItem(storageKey)}}>{pick(isEnglish,"重置进度","Reset progress")}</button></footer></aside></div>}</>;
 }

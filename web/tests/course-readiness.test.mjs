@@ -12,8 +12,8 @@ test("keeps one primary entry on the quant research page", () => {
 
 test("shows the real AI state in the product shell without making it home content", () => {
   const workbench = read("app/components/personal-workbench.tsx");
-  assert.match(workbench, /模型设置<Badge variant="outline">/);
-  assert.match(workbench, /providerId === "mock" \? "规则可用"/);
+  assert.match(workbench, /pick\(isEnglish, "模型设置", "AI models"\).*<Badge variant="outline">/);
+  assert.match(workbench, /providerId === "mock" \? pick\(isEnglish, "规则可用", "Rules available"\)/);
   assert.doesNotMatch(workbench, /function AIModelHomeCard/);
 });
 
@@ -32,7 +32,8 @@ test("opens stock research on the evidence summary instead of an empty chart", (
   assert.match(research, /setPanel\("概览"\)/);
   assert.match(research, /submittedQuery\.trim\(\) \|\| "检查近期正式披露"/);
   assert.match(research, /<AppNavigation/);
-  assert.match(navigation, /aria-label="Market Clarity 安心看股工作台"/);
+  assert.match(navigation, /Market Clarity 安心看股工作台/);
+  assert.match(navigation, /Market Clarity investment workspace/);
   assert.match(navigation, /href: "\/analysis\?view=research", label: "股票研究"/);
   assert.match(navigation, /href: "\/quant", label: "量化研究"/);
 });
@@ -183,7 +184,7 @@ test("keeps the 95-point claim behind external evidence gates",()=>{
 
 test("does not label the initial health check as a retrying failure",()=>{
   const status=read("app/components/system-reliability-center.tsx");
-  assert.match(status,/status\?label\[status\]:"检查中"/);
+  assert.match(status,/status\?\(isEnglish\?englishLabel\[status\]:label\[status\]\)/);
   assert.match(status,/正在读取，不代表故障/);
   assert.doesNotMatch(status,/status=data\?\.status\.status\?\?"retrying"/);
 });
