@@ -103,6 +103,13 @@ test("continues the same task id and replaces the temporary continuation record"
   assert.match(agent,/concat\(continued\)/);
 });
 
+test("turns workspace preview questions into structured continuation instead of a failed task",async()=>{
+  const text=await readFile(new URL("../app/lib/agent-os.ts",import.meta.url),"utf8");
+  assert.match(text,/workspacePatch\?\.questions\?\?\[\]/);
+  assert.match(text,/needsInput=clarificationQuestions\.length>0/);
+  assert.match(text,/status:extraction\.risk_level==="restricted"\|\|\(!needsInput&&\(workspaceFailed\|\|nothingSucceeded\)\)\?"failed":needsInput\?"awaiting_input"/);
+});
+
 test("supports a source-transparent social observation workspace without inventing trends", () => {
   const current=workspace.createWorkspace("custom");
   const result=workspace.previewWorkspaceChange(current,"现在小红书上大家在讨论什么？把热门主题放进我的工作台");
