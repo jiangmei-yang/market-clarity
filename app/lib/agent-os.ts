@@ -32,7 +32,7 @@ const inputRequest=(items:string[]):AgentInputRequest|undefined=>{
     if(/(解决什么问题|我是新手|已经有持仓|想完成什么)/.test(question))return {id,label:"这次想先完成什么",question,type:"choice",options:["检查现有持仓","研究一只股票或 ETF","建立学习与模拟工作台","核验一条消息"],required:true};
     if(/(布局|位置|顺序|大小|放到哪里|首页)/.test(question))return {id,label:"放在哪里",question,type:"choice",options:["首页顶部","主要内容之后","右侧辅助区","由系统安排"],required:true};
     if(/(重合|重复|暴露|指标)/.test(question))return {id,label:"核对范围",question,type:"choice",options:["全部检查","重仓股重合","行业重合","主题重合"],required:true};
-    if(/(期限|多久|时间)/.test(question))return {id,label:"时间范围",question,type:"choice",options:["1 个月内","1—6 个月","6 个月以上","暂不确定"],required:true};
+    if(/(期限|多久|时间|长期持有|几周|几个月|多久调整)/.test(question))return {id,label:"时间范围",question,type:"choice",options:["1 个月内","1—6 个月","6 个月以上","暂不确定"],required:true};
     if(/(亏损|损失|风险)/.test(question))return {id,label:"可承受损失",question,type:"choice",options:["5%以内","5%—10%","10%—20%","暂不确定"],required:true};
     if(/(频率|每周|投入多少时间)/.test(question))return {id,label:"查看频率",question,type:"choice",options:["每天","每周 2—3 次","每周一次","不固定"],required:true};
     return {id,label:/ETF|代码|标的/.test(question)?"ETF 或标的":"补充信息",question,type:"text",required:true};

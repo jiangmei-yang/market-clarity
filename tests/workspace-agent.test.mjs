@@ -89,6 +89,7 @@ test("pauses for structured input instead of misreporting missing context as fai
   assert.match(registry,/status:"pending"\|"running"\|"completed"\|"failed"\|"cancelled"\|"awaiting_input"/);
   assert.match(component,/task\.status==="awaiting_input"/);
   assert.match(component,/继续这项任务/);
+  assert.match(component,/task\.requires_confirmation&&task\.status!=="awaiting_input"/);
   assert.match(component,/body:JSON\.stringify\(\{answers\}\)/);
   assert.match(continueRoute,/continueAgentTask/);
   assert.match(continueRoute,/body\.answers\?\?\{\}/);
