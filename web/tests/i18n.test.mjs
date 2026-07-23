@@ -27,14 +27,29 @@ test("localizes the first-use workspace and cross-route product shell", () => {
   const workbench = read("app/components/personal-workbench.tsx");
   const shell = read("app/components/product-tool-shell.tsx");
   const guide = read("app/components/contextual-guide.tsx");
+  const assistant = read("app/components/global-ai-assistant.tsx");
   assert.match(workbench, /Start with what matters to you now/);
   assert.match(workbench, /Market overview/);
   assert.match(workbench, /Latest formal information/);
+  assert.match(workbench, /Recorded amount/);
+  assert.match(workbench, /Long-term investing/);
   assert.match(shell, /ETF diagnosis/);
   assert.match(shell, /Quant research/);
   assert.match(shell, /Task agent/);
   assert.match(guide, /Workspace quick start/);
   assert.match(guide, /Using stock research/);
+  assert.match(assistant, /Open research assistant/);
+  assert.match(assistant, /Find sources, calculate impact/);
+  assert.match(assistant, /Rule tools available/);
+});
+
+test("keeps the full 90-second decision demo usable in English", () => {
+  const demo = read("app/components/demo-walkthrough.tsx");
+  assert.match(demo, /Interactive teaching scenario/);
+  assert.match(demo, /How much are you planning to add/);
+  assert.match(demo, /Evidence still missing/);
+  assert.match(demo, /The system does not execute for you/);
+  assert.match(demo, /information → verification → personal impact → your decision/);
 });
 
 test("keeps the course evidence center usable in English",()=>{

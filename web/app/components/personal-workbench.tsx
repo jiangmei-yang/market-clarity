@@ -45,6 +45,23 @@ type Snapshot = {
 const DISCLAIMER = "本工具仅用于投资信息、持仓分析和交易复盘参考，不构成任何投资建议、收益承诺或买卖建议。";
 const percent = (value: number) => `${(value * 100).toFixed(value * 100 % 1 ? 1 : 0)}%`;
 const currency = (value: number) => new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY", maximumFractionDigits: 0 }).format(value);
+const workspaceDisplayName = (name: string, isEnglish: boolean) => {
+  if (!isEnglish) return name;
+  const knownNames: Record<string, string> = {
+    "长期投资工作台": "Long-term investing",
+    "长期基本面": "Long-term fundamentals",
+    "新手工作台": "Beginner workspace",
+    "ETF 工作台": "ETF workspace",
+    "交易复盘工作台": "Trade review",
+    "风险控制工作台": "Risk control",
+  };
+  return knownNames[name] ?? name;
+};
+const aiProviderDisplayName = (name: string | undefined, isEnglish: boolean) => {
+  if (!name) return pick(isEnglish, "未连接", "Not connected");
+  if (!isEnglish) return name;
+  return name.startsWith("我的 ") ? `My ${name.slice(3)}` : name === "本地规则模式" ? "Local rule mode" : name;
+};
 const normalizeWorkspace = (workspace: Workspace): Workspace => normalizeDashboardWorkspace({
   ...workspace, description: workspace.description ?? "按自己的研究流程调整",
   explanationLevel: workspace.explanationLevel ?? "beginner", preferredAssets: workspace.preferredAssets ?? [], preferredSectors: workspace.preferredSectors ?? [],
@@ -100,10 +117,10 @@ export function PersonalWorkbench({ surface, authenticatedUser, initialAIProvide
 
       <main className="personal-main" id="main-content">
         <header className="personal-topbar" data-guide="page-header">
-          <div><span>{pick(isEnglish, "当前工作台", "Current workspace")}</span><select aria-label={pick(isEnglish, "切换工作台", "Switch workspace")} value={activeWorkspace.id} onChange={(event) => persist({ activeWorkspaceId: event.target.value, workspaceAudit: [...(snapshot.workspaceAudit ?? []), { commandId: `switch-${Date.now()}`, intent: "switch_workspace", proposedChanges: [`switch:${event.target.value}`], status: "applied" as const, createdAt: new Date().toISOString(), confirmedAt: new Date().toISOString() }].slice(-200) })}>{workspaces.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><span className="personal-theme-label"><Palette />{isEnglish ? activeWorkspace.theme.themeId.replaceAll("_", " ") : THEME_LABELS[activeWorkspace.theme.themeId]}</span></div>
+          <div><span>{pick(isEnglish, "当前工作台", "Current workspace")}</span><select aria-label={pick(isEnglish, "切换工作台", "Switch workspace")} value={activeWorkspace.id} onChange={(event) => persist({ activeWorkspaceId: event.target.value, workspaceAudit: [...(snapshot.workspaceAudit ?? []), { commandId: `switch-${Date.now()}`, intent: "switch_workspace", proposedChanges: [`switch:${event.target.value}`], status: "applied" as const, createdAt: new Date().toISOString(), confirmedAt: new Date().toISOString() }].slice(-200) })}>{workspaces.map((item) => <option key={item.id} value={item.id}>{workspaceDisplayName(item.name, isEnglish)}</option>)}</select><span className="personal-theme-label"><Palette />{isEnglish ? activeWorkspace.theme.themeId.replaceAll("_", " ") : THEME_LABELS[activeWorkspace.theme.themeId]}</span></div>
           <div className="personal-top-actions">
             <Link href="/workspace"><Settings2 />{pick(isEnglish, "编辑工作台", "Edit workspace")}</Link>
-            <Link href="/ai-settings"><Sparkles />{pick(isEnglish, "模型设置", "AI models")}<Badge variant="outline">{aiProviders.find((item)=>item.isDefault)?.providerId === "mock" ? pick(isEnglish, "规则可用", "Rules available") : aiProviders.find((item)=>item.isDefault)?.displayName ?? pick(isEnglish, "未连接", "Not connected")}</Badge></Link>
+            <Link href="/ai-settings"><Sparkles />{pick(isEnglish, "模型设置", "AI models")}<Badge variant="outline">{aiProviders.find((item)=>item.isDefault)?.providerId === "mock" ? pick(isEnglish, "规则可用", "Rules available") : aiProviderDisplayName(aiProviders.find((item)=>item.isDefault)?.displayName, isEnglish)}</Badge></Link>
           </div>
         </header>
         {surface === "home" && <HomeSurface snapshot={snapshot} profile={profile} workspace={activeWorkspace} aiProviders={aiProviders} />}
@@ -267,8 +284,10 @@ function RiskInbox({ profile, largest, largestWeight }: { profile?: InvestorProf
 }
 
 function PortfolioOverviewMini({ total, holdings }: { total: number; holdings: Record<string, Holding> }) {
+  const { isEnglish, locale } = useI18n();
   const rows = Object.entries(holdings).map(([code, holding]) => ({ code, ...holding, weight: total ? holding.value / total : 0 })).sort((a, b) => b.value - a.value).slice(0, 3);
-  return <div className="personal-holding-summary"><div className="personal-holding-total"><span>当前记录金额</span><strong>{currency(total)}</strong><small>{Object.keys(holdings).length} 个标的</small></div><div className="personal-holding-list">{rows.map((row) => <div key={row.code}><span><strong>{row.name}</strong><small>{row.code} · {row.industry || "行业待补充"}</small></span><b>{percent(row.weight)}</b></div>)}</div></div>;
+  const formattedTotal = new Intl.NumberFormat(locale, { style: "currency", currency: "CNY", maximumFractionDigits: 0 }).format(total);
+  return <div className="personal-holding-summary"><div className="personal-holding-total"><span>{pick(isEnglish, "当前记录金额", "Recorded amount")}</span><strong>{formattedTotal}</strong><small>{Object.keys(holdings).length} {pick(isEnglish, "个标的", "assets")}</small></div><div className="personal-holding-list">{rows.map((row) => <div key={row.code}><span><strong>{row.name}</strong><small>{row.code} · {row.industry || pick(isEnglish, "行业待补充", "Sector not provided")}</small></span><b>{percent(row.weight)}</b></div>)}</div></div>;
 }
 
 function updateProfileLimit(draft: ProfileDraft, key: "maxSingleWeight" | "maxSectorWeight", rawValue: number): ProfileDraft {
