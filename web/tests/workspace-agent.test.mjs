@@ -85,6 +85,7 @@ test("pauses for structured input instead of misreporting missing context as fai
   assert.match(agent,/input_request:needsInput\?request:undefined/);
   assert.match(agent,/type:"choice"\|"text"/);
   assert.match(agent,/options:\["首页顶部","主要内容之后","右侧辅助区","由系统安排"\]/);
+  assert.match(agent,/options:\["检查现有持仓","研究一只股票或 ETF","建立学习与模拟工作台","核验一条消息"\]/);
   assert.match(registry,/status:"pending"\|"running"\|"completed"\|"failed"\|"cancelled"\|"awaiting_input"/);
   assert.match(component,/task\.status==="awaiting_input"/);
   assert.match(component,/继续这项任务/);
