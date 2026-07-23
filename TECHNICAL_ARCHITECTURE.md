@@ -1,6 +1,6 @@
 # Market Clarity · 安心看股技术架构
 
-这份文档对应当前 Sites 桌面网页版，用于组员协作、课程答辩和代码审查。它描述已经存在的实现，不把规划中的能力写成已完成。
+这份文档描述当前 Sites 桌面网页版的系统边界、运行架构与已实现能力，供开发、集成、安全审查和产品维护使用。规划中的能力会明确标记，不会写成已完成。
 
 ## 1. 产品边界
 
@@ -70,7 +70,7 @@ Browser / ChatGPT Site
 | AI Provider | `app/lib/ai-provider-catalog.ts` | 已上线 | 模型发现、测试、加密保存、默认路由与降级 |
 | Failure Mode | `app/lib/failure-control.ts` | 已上线 | healthy / degraded / stale / failed 等统一状态 |
 | Capability RAG | `app/lib/capability-rag.ts` | 已上线 | 从真实 Registry 和路由生成、增量更新与检索能力文档 |
-| 产品说明 | `app/features` | 已上线 | 给组员和评委展示实时功能状态与可追溯问答 |
+| 产品说明 | `app/features` | 已上线 | 面向所有访问者展示实时功能状态、入口、限制与可追溯问答 |
 
 ## 4. 确定性计算与 AI 的边界
 
@@ -112,7 +112,7 @@ AI 只负责：
 - Engine Registry；
 - AI Provider Registry。
 
-每项能力包含状态、入口、输入、输出、限制、权限、版本和更新时间。`/features` 与 `POST /product-guide/ask` 从这一索引读取信息，因此新增或停用功能后无需重新写一套 Pitch 文案。
+每项能力包含状态、入口、输入、输出、限制、权限、版本和更新时间。`/features` 与 `POST /product-guide/ask` 从这一索引读取信息，因此新增或停用功能后无需重复维护页面说明。
 
 ## 7. 失败与降级策略
 

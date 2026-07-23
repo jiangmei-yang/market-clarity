@@ -12,6 +12,6 @@ export function validateStudyInput(input:StudyInput){
   if(!["已修改","维持计划","已延迟"].includes(input.result))throw new Error("最终选择无效");
   if(!Number.isInteger(input.satisfaction)||input.satisfaction<1||input.satisfaction>5)throw new Error("请明确选择 1–5 分满意度");
   if(typeof input.riskUnderstood!=="boolean"||typeof input.repeatIntent!=="boolean"||typeof input.paidIntent!=="boolean")throw new Error("请明确回答理解、再次使用和付费测试问题");
-  if(input.consent!==true)throw new Error("只有明确同意匿名用于课程研究后才能提交");
+  if(input.consent!==true)throw new Error("只有明确同意匿名用于产品体验研究后才能提交");
   return{...input,reviewId,testerCode,riskExplanation:cleanText(input.riskExplanation,"主要风险复述",8,300),confusingStep:String(input.confusingStep??"").trim().slice(0,160)};
 }
