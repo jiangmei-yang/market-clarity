@@ -129,8 +129,8 @@ test("measures the real task funnel instead of only completed feedback",()=>{
 });
 
 test("documents a reproducible external validation protocol",()=>{
-  const runbook=read("REAL_VALIDATION_RUNBOOK.md");
-  const loop=read("CRITICAL_LOOP_ITERATION_04.md");
+  const runbook=read("docs/validation/REAL_VALIDATION_RUNBOOK.md");
+  const loop=read("docs/product-evolution/CRITICAL_LOOP_ITERATION_04.md");
   assert.match(runbook,/15 分钟单人流程/);
   assert.match(runbook,/不提示点击顺序/);
   assert.match(runbook,/外部用户样本 ≥ 15/);
@@ -161,8 +161,8 @@ test("measures live market and disclosure route reliability on a fixed sample",(
 });
 
 test("keeps the fifth judge score tied to measured data evidence",()=>{
-  const loop=read("CRITICAL_LOOP_ITERATION_05.md");
-  const judge=read("COURSE_JUDGE_REVIEW.md");
+  const loop=read("docs/product-evolution/CRITICAL_LOOP_ITERATION_05.md");
+  const judge=read("docs/validation/COURSE_JUDGE_REVIEW.md");
   assert.match(loop,/\*\*92\/100\*\*/);
   assert.match(loop,/P95 延迟 \| 1,069 ms/);
   assert.match(loop,/0 \/ 20 \/ 0 \/ 0/);
@@ -171,7 +171,7 @@ test("keeps the fifth judge score tied to measured data evidence",()=>{
 });
 
 test("keeps the 95-point claim behind external evidence gates",()=>{
-  const audit=read("MVP_95_COMPLETION_AUDIT.md");
+  const audit=read("docs/validation/MVP_95_COMPLETION_AUDIT.md");
   assert.match(audit,/当前可辩护课程分为 \*\*78\/100\*\*/);
   assert.match(audit,/此前 92 分的判断忽略了/);
   assert.match(audit,/0 位外部参与者/);
