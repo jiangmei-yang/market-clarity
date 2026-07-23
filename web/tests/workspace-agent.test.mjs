@@ -55,11 +55,20 @@ test("keeps Agent planning general, auditable, and honest about missing social d
   assert.match(agent, /plan:\{task_id:taskId,goal,steps,requires_confirmation/);
   assert.match(agent, /当前没有足够样本/);
   assert.match(agent, /未伪造完成状态/);
+  assert.match(agent, /portfolioRiskResult/);
+  assert.match(agent, /readStockInformationRoute/);
+  assert.match(agent, /readFinancialRoute/);
+  assert.match(agent, /readEvidenceRoute/);
+  assert.match(agent, /tool\.toolId==="create_reminder"/);
   assert.match(agent, /cancelAssistantCommand/);
   assert.match(component, /工作台修改预览/);
   assert.match(component, /结果预览/);
   assert.match(component, /数据来源/);
   assert.match(component, /确认并应用/);
+  assert.match(component, /组合风险核对/);
+  assert.match(component, /最大持仓/);
+  assert.match(component, /价格与成交/);
+  assert.match(component, /近期公告/);
   assert.match(proposalRoute, /requires_human_review:true/);
 });
 

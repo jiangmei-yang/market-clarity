@@ -12,7 +12,14 @@ type UpstreamResult = {
   fallbackHistoryError?: string;
 };
 
-type HistoryPoint = { date?: string; close?: number; volume?: number };
+type HistoryPoint = {
+  date?: string;
+  open?: number;
+  high?: number;
+  low?: number;
+  close?: number;
+  volume?: number;
+};
 type StockSearchPayload = { items?: Array<{ code?: string }>; is_demo?: boolean };
 type SourceStatus = {
   id: string;
@@ -40,7 +47,14 @@ function normalizeTencentHistory(payload: unknown, code: string): { data: Histor
   const key = `${marketPrefix(code)}${code}`;
   const record = (payload as { data?: Record<string, { qfqday?: unknown[][]; day?: unknown[][] }> }).data?.[key];
   const rows = record?.qfqday ?? record?.day ?? [];
-  const data = rows.map((row) => ({ date: String(row[0] ?? ""), close: Number(row[2]), volume: Number(row[5]) }))
+  const data = rows.map((row) => ({
+    date: String(row[0] ?? ""),
+    open: Number(row[1]),
+    close: Number(row[2]),
+    high: Number(row[3]),
+    low: Number(row[4]),
+    volume: Number(row[5]),
+  }))
     .filter((point) => point.date && Number.isFinite(point.close));
   return data.length ? { data, source: "腾讯证券公开行情", is_demo: false } : undefined;
 }
@@ -50,7 +64,14 @@ function normalizeEastmoneyHistory(payload: unknown): { data: HistoryPoint[]; so
   const rows = (payload as { data?: { klines?: string[] } }).data?.klines ?? [];
   const data = rows.map((row) => {
     const fields = row.split(",");
-    return { date: fields[0], close: Number(fields[2]), volume: Number(fields[5]) };
+    return {
+      date: fields[0],
+      open: Number(fields[1]),
+      close: Number(fields[2]),
+      high: Number(fields[3]),
+      low: Number(fields[4]),
+      volume: Number(fields[5]),
+    };
   }).filter((point) => point.date && Number.isFinite(point.close));
   return data.length ? { data, source: "东方财富公开历史行情", is_demo: false } : undefined;
 }
@@ -60,9 +81,15 @@ function normalizeIfindHistory(payload: unknown): { data: HistoryPoint[]; source
   const table = (payload as { tables?: Array<{ time?: unknown[]; table?: Record<string, unknown[]> }> }).tables?.[0];
   const dates = Array.isArray(table?.time) ? table.time : [];
   const closes = Array.isArray(table?.table?.close) ? table.table.close : [];
+  const opens = Array.isArray(table?.table?.open) ? table.table.open : [];
+  const highs = Array.isArray(table?.table?.high) ? table.table.high : [];
+  const lows = Array.isArray(table?.table?.low) ? table.table.low : [];
   const volumes = Array.isArray(table?.table?.volume) ? table.table.volume : [];
   const data = closes.map((value, index) => ({
     date: String(dates[index] ?? "").slice(0, 10),
+    open: Number(opens[index]) || undefined,
+    high: Number(highs[index]) || undefined,
+    low: Number(lows[index]) || undefined,
     close: Number(value),
     volume: Number(volumes[index]) || undefined,
   })).filter((point) => /^\d{4}-\d{2}-\d{2}$/.test(point.date) && Number.isFinite(point.close));

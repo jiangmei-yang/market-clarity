@@ -57,12 +57,30 @@ test("keeps onboarding contextual and navigation grouped by user goal", async ()
   assert.match(guide, /pick\(isEnglish,"已完成","Completed"\)/);
   assert.match(navigation, /locale-switcher/);
   assert.match(navigation, /setLocale\("en"\)/);
-  assert.match(workbench, /近 60 个交易日价格与成交量走势图/);
-  assert.match(workbench, /60日高点/);
-  assert.match(workbench, /最新可核实事件/);
+  assert.match(workbench, /近 \$\{rangeDays\} 个交易日价格、均线、成交量与事件走势图/);
+  assert.match(workbench, /\$\{rangeDays\}日高点/);
+  assert.match(workbench, /最新正式信息/);
   assert.match(css, /\.nav-submenu/);
   assert.match(css, /\.context-guide-panel/);
+  assert.match(css, /\.global-utility-dock/);
+  assert.doesNotMatch(css, /\.context-guide-trigger\s*\{\s*position:\s*fixed;\s*top:\s*16px;\s*right:\s*78px/);
   assert.match(css, /\.chart-axis-label/);
+  assert.match(workbench, /相对 20 日均线/);
+  assert.match(workbench, /成交活跃度/);
+  assert.match(workbench, /chart-moving-average ma5/);
+  assert.match(workbench, /今日需要核对/);
+  assert.match(workbench, /setRangeDays/);
+  assert.match(workbench, /home-chart-tooltip/);
+  assert.match(workbench, /moveHoverByKey/);
+  assert.match(workbench, /chartMode/);
+  assert.match(workbench, /candlestick/);
+  assert.match(workbench, /chartSize/);
+  assert.match(workbench, /showMa5/);
+  assert.match(workbench, /hoveredAmplitude/);
+  assert.match(workbench, /开盘/);
+  assert.match(workbench, /published_at/);
+  assert.match(workbench, /Shanghai Composite/);
+  assert.doesNotMatch(workbench, /怎么看这张图/);
 });
 
 test("keeps theme, local signal evidence, and progressive precheck in the workbench source", async () => {
@@ -500,6 +518,11 @@ test("keeps the daily workflow and decision loop in the product source", async (
   assert.doesNotMatch(page, /系统从 27 条行情/);
   assert.match(page, /当前资料状态/);
   assert.match(page, /价格与事件/);
+  assert.match(page, /setPanel\("价格与事件"\)/);
+  assert.match(page, /research-chart-tooltip/);
+  assert.match(page, /moveHoverByKey/);
+  assert.match(page, /同期沪深300/);
+  assert.match(page, /放大走势图/);
   assert.match(page, /财报体检/);
   assert.match(page, /研究一个具体问题/);
   assert.match(page, /定量核实/);

@@ -6,6 +6,9 @@ import { cancelAssistantCommand, createAssistantPreview, confirmAssistantCommand
 import { diagnosePublicEtfs } from "./etf-public";
 import { readUserSnapshot, writeUserSnapshot, type UserSnapshot } from "./user-snapshot";
 import { POST as runTradeAttributionRoute } from "../api/trade/attribution/route";
+import {GET as readStockInformationRoute} from "../api/information/[code]/route";
+import {GET as readFinancialRoute} from "../api/financial/[code]/route";
+import {GET as readEvidenceRoute} from "../api/evidence/[code]/route";
 import {searchPlatformCapabilityIndex} from "./capability-index-server";
 import {parseStrategyDeterministically} from "./natural-language-strategy";
 import {parseQuantGoal,routeQuantEngine} from "./quant-engine-router";
@@ -62,11 +65,46 @@ function toolAllowedForGoal(tool:ToolDefinition,goal:string){
   if(tool.toolId==="explain_metric")return /(解释|看懂|是什么|什么意思).*(指标|估值|波动|回撤|集中度|现金流|市盈率|PE|PB|ROE)/i.test(goal);
   if(tool.toolId==="dca_simulation")return /(定投).*(模拟)|(模拟).*(定投)/.test(goal);
   if(tool.toolId==="run_paper_simulation")return /(纸面|模拟|虚拟).*(组合|交易|投资)/.test(goal);
+  if(tool.toolId==="create_reminder")return /(创建|设置|增加|添加|保存|安排).{0,8}(提醒|通知)|(提醒|通知).{0,8}(我|一下|设置|创建)/.test(normalized);
+  if(tool.toolId==="create_watchlist")return /(创建|设置|增加|添加|保存).{0,8}(观察列表|自选|关注)|(加入|放入).{0,8}(观察列表|自选|关注)/.test(normalized);
+  if(tool.toolId==="save_user_rule")return /(保存|记住|以后|设为).{0,10}(规则|边界|偏好)|(规则|边界).{0,8}(保存|生效)/.test(normalized);
+  if(tool.toolId==="create_workspace")return /(创建|新建).{0,10}工作台/.test(normalized);
+  if(tool.toolId==="save_workspace")return /保存.{0,10}工作台|工作台.{0,10}保存/.test(normalized);
+  if(tool.toolId==="restore_workspace")return /(恢复|撤销|重做).{0,10}工作台|工作台.{0,10}(恢复|撤销|重做)/.test(normalized);
+  // A model may propose a useful follow-up, but confirmable tools must not enter
+  // the execution plan unless the user actually requested that action.
+  if(tool.permissionLevel==="confirm")return tool.keywords.some((keyword)=>normalized.includes(keyword.replaceAll(/\s+/g,"").toLowerCase()));
   return true;
 }
 
 function source(sourceId:string,status:AgentSource["status"]="available"):AgentSource{const item=DATA_SOURCE_REGISTRY.find((row)=>row.sourceId===sourceId);return {source_id:sourceId,name:item?.name??sourceId,collected_at:now(),sample_scope:item?.scope??"工具返回范围",status};}
+function sourceFromOutput(sourceId:string,output:unknown,status:AgentSource["status"]="available"):AgentSource{
+  const row=output as {source?:unknown;data_timestamp?:unknown};
+  const fallback=source(sourceId,status);
+  return {...fallback,name:typeof row?.source==="string"&&row.source?row.source:fallback.name,collected_at:typeof row?.data_timestamp==="string"&&row.data_timestamp?row.data_timestamp:now()};
+}
 function portfolioResult(snapshot:AgentSnapshot){const holdings=snapshot.holdings??{};const rows=Object.entries(holdings).map(([code,item])=>({code,name:item.name??code,value:Number(item.value??0),industry:item.industry??"待核对"})).filter((item)=>item.value>0);const total=rows.reduce((sum,item)=>sum+item.value,0);const positions=rows.map((item)=>({...item,weight:total?item.value/total:0})).sort((a,b)=>b.weight-a.weight);return {data_status:rows.length?"user_saved":"missing",portfolio_value:total,position_count:rows.length,largest_position:positions[0]??null,positions};}
+function portfolioRiskResult(snapshot:AgentSnapshot){
+  const portfolio=portfolioResult(snapshot);
+  if(portfolio.data_status==="missing")return {...portfolio,largest_sector:null,sector_exposures:[],rule_checks:[],review_items:["先手动添加持仓或导入 CSV，系统不会连接券商账户。"]};
+  const profile=snapshot.investorProfile??DEFAULT_PROFILE;
+  const sectors=new Map<string,number>();
+  for(const position of portfolio.positions)if(position.industry!=="待核对")sectors.set(position.industry,(sectors.get(position.industry)??0)+position.value);
+  const sectorExposures=[...sectors.entries()].map(([industry,value])=>({industry,value,weight:portfolio.portfolio_value?value/portfolio.portfolio_value:0})).sort((a,b)=>b.weight-a.weight);
+  const largest=portfolio.largest_position;
+  const largestSector=sectorExposures[0]??null;
+  const missingIndustry=portfolio.positions.filter((item)=>item.industry==="待核对").length;
+  const ruleChecks=[
+    {id:"single_position",label:"单一持仓",actual:largest?.weight??0,limit:profile.maxSingleWeight,status:(largest?.weight??0)>profile.maxSingleWeight?"exceeded":"within"},
+    {id:"sector_concentration",label:"单一行业",actual:largestSector?.weight??0,limit:profile.maxSectorWeight,status:largestSector?(largestSector.weight>profile.maxSectorWeight?"exceeded":"within"):"unknown"},
+  ];
+  const reviewItems:string[]=[];
+  if(largest)reviewItems.push(`${largest.name}占组合${(largest.weight*100).toFixed(1)}%，${largest.weight>profile.maxSingleWeight?"超过":"未超过"}个人单一持仓上限${(profile.maxSingleWeight*100).toFixed(0)}%。`);
+  if(largestSector)reviewItems.push(`${largestSector.industry}占组合${(largestSector.weight*100).toFixed(1)}%，${largestSector.weight>profile.maxSectorWeight?"超过":"未超过"}个人行业上限${(profile.maxSectorWeight*100).toFixed(0)}%。`);
+  if(missingIndustry)reviewItems.push(`${missingIndustry}项持仓缺少行业标签，行业集中度只能作为部分结果。`);
+  if(!reviewItems.length)reviewItems.push("当前没有足够持仓数据可核对。");
+  return {...portfolio,type:"portfolio_risk",largest_sector:largestSector,sector_exposures:sectorExposures,missing_industry_count:missingIndustry,rule_checks:ruleChecks,review_items:reviewItems,disclaimer:"结果只核对用户保存的持仓和个人规则，不构成买卖建议。"};
+}
 
 function pretradeResult(goal:string,snapshot:AgentSnapshot){
   const holdings=snapshot.holdings??{};const code=goal.match(/(?<!\d)\d{6}(?!\d)/)?.[0];const selected=code?holdings[code]:undefined;
@@ -88,11 +126,47 @@ async function tradeAttributionResult(goal:string){
   return response.json();
 }
 
+function codeFromGoal(goal:string){return goal.match(/(?<!\d)[036]\d{5}(?!\d)/)?.[0]??null;}
+async function routeJson(response:Response){
+  const payload=await response.json() as Record<string,unknown>;
+  return {ok:response.ok,payload,status:response.status};
+}
+async function marketDataResult(goal:string){
+  const code=codeFromGoal(goal);if(!code)return {data_status:"missing",message:"请补充 6 位 A 股代码。"};
+  const result=await routeJson(await readStockInformationRoute(new Request(`http://internal/api/information/${code}`),{params:Promise.resolve({code})}));
+  if(!result.ok)return {data_status:"unavailable",code,message:String(result.payload.message??"行情数据暂不可用"),reliability:result.payload.reliability};
+  const history=((result.payload.history as {data?:Array<{date?:string;open?:number;high?:number;low?:number;close?:number;volume?:number}>}|undefined)?.data??[]).slice(-60);
+  const latest=history.at(-1),previous=history.at(-2),first=history[0];
+  const current=Number((result.payload.quote as {current_price?:number}|undefined)?.current_price??latest?.close??0);
+  const dayChange=previous?.close&&current?(current/previous.close-1)*100:null;
+  const periodChange=first?.close&&current?(current/first.close-1)*100:null;
+  return {type:"market_snapshot",data_status:"available",code,current_price:current||null,day_change_pct:dayChange,period_change_pct:periodChange,period_days:history.length,data_timestamp:result.payload.data_timestamp??latest?.date??null,source:result.payload.source??result.payload.provider,latest_volume:latest?.volume??null,range:{high:history.length?Math.max(...history.map((item)=>Number(item.high??item.close??0))):null,low:history.length?Math.min(...history.map((item)=>Number(item.low??item.close??Infinity))):null},points:history.slice(-20),reliability:result.payload.reliability};
+}
+async function financialDataResult(goal:string,anomalyOnly=false){
+  const code=codeFromGoal(goal);if(!code)return {data_status:"missing",message:"请补充 6 位 A 股代码。"};
+  const result=await routeJson(await readFinancialRoute(new Request(`http://internal/api/financial/${code}`),{params:Promise.resolve({code})}));
+  if(!result.ok)return {data_status:"unavailable",code,message:String(result.payload.message??"财务数据暂不可用"),reliability:result.payload.reliability};
+  const checks=(result.payload.checks??[]) as Array<{id?:string;title?:string;state?:string;finding?:string;evidence?:string;why_it_matters?:string}>;
+  return {type:anomalyOnly?"financial_anomaly":"financial_snapshot",data_status:"available",code,report_date:result.payload.report_date,headline:result.payload.headline,checks:anomalyOnly?checks.filter((item)=>item.state!=="steady"):checks,coverage:result.payload.coverage,data_timestamp:(result.payload.data_status as {updated_at?:string}|undefined)?.updated_at??result.payload.updated_at??result.payload.report_date,source:(result.payload.data_status as {source?:string}|undefined)?.source??result.payload.source??"公开财务报表",reliability:result.payload.reliability,disclaimer:"财务结果只做数据勾稽与异常核对，不构成盈利预测或买卖建议。"};
+}
+async function announcementResult(goal:string){
+  const code=codeFromGoal(goal);if(!code)return {data_status:"missing",message:"请补充 6 位 A 股代码。"};
+  const result=await routeJson(await readEvidenceRoute(new Request(`http://internal/api/evidence/${code}?reason=${encodeURIComponent(goal)}`),{params:Promise.resolve({code})}));
+  if(!result.ok)return {data_status:"unavailable",code,message:String(result.payload.message??"公告检索暂不可用"),reliability:result.payload.reliability};
+  const feed=result.payload.feed as {items?:Array<Record<string,unknown>>;updated_at?:string;sources?:string[];message?:string}|undefined;
+  return {type:"announcement_snapshot",data_status:"available",code,assessment:result.payload.assessment,items:(feed?.items??[]).slice(0,5),coverage:result.payload.radar,data_timestamp:feed?.updated_at??result.payload.updated_at,source:feed?.sources?.join("、")??result.payload.source,message:feed?.message,reliability:result.payload.reliability,disclaimer:"公告标题只用于定位原文；结论需以法定披露原文为准。"};
+}
+
 async function executeSafeTool(tool:ToolDefinition,goal:string,snapshot:AgentSnapshot):Promise<AgentToolCall>{
   const started=now();const call:AgentToolCall={tool_id:tool.toolId,status:"running",started_at:started,input:{goal:goal.slice(0,500)},sources:[],reliability:reliability({status:"retrying",message:"工具正在执行",retryable:true})};
   try{
     if(tool.toolId==="search_capabilities"){const result=await searchPlatformCapabilityIndex(goal,{limit:10});call.output={type:"capability_answer",data_status:result.hits.length?"available":"missing",capabilities:result.hits,limitations:result.hits.length?[]:["当前能力索引没有找到对应能力"],index:result.index,runtime:result.runtime};call.sources=[source("capability_registry",result.hits.length?"available":"missing")];}
-    else if(tool.toolId==="get_portfolio"||tool.toolId==="calculate_portfolio_risk"){call.output=portfolioResult(snapshot);call.sources=[source("user_portfolio",(call.output as {data_status:string}).data_status==="missing"?"missing":"available")];}
+    else if(tool.toolId==="get_market_data"||tool.toolId==="search_stock"){call.output=await marketDataResult(goal);call.sources=[sourceFromOutput("public_market_data",call.output,(call.output as {data_status:string}).data_status==="available"?"available":"unavailable")];}
+    else if(tool.toolId==="get_financial_report"){call.output=await financialDataResult(goal);call.sources=[sourceFromOutput("public_financial_data",call.output,(call.output as {data_status:string}).data_status==="available"?"available":"unavailable")];}
+    else if(tool.toolId==="detect_financial_anomaly"){call.output=await financialDataResult(goal,true);call.sources=[sourceFromOutput("public_financial_data",call.output,(call.output as {data_status:string}).data_status==="available"?"available":"unavailable")];}
+    else if(tool.toolId==="get_announcement"){call.output=await announcementResult(goal);call.sources=[sourceFromOutput("exchange_announcement",call.output,(call.output as {data_status:string}).data_status==="available"?"available":"unavailable")];}
+    else if(tool.toolId==="get_portfolio"){call.output=portfolioResult(snapshot);call.sources=[source("user_portfolio",(call.output as {data_status:string}).data_status==="missing"?"missing":"available")];}
+    else if(tool.toolId==="calculate_portfolio_risk"){call.output=portfolioRiskResult(snapshot);call.sources=[source("user_portfolio",(call.output as {data_status:string}).data_status==="missing"?"missing":"available")];}
     else if(["search_etf","get_etf_holdings","diagnose_etf_overlap"].includes(tool.toolId)){const codes=[...new Set(goal.match(/(?<!\d)\d{6}(?!\d)/g)??[])];if(!codes.length){call.output={data_status:"missing",message:"暂无数据：请补充 6 位 ETF 代码"};call.sources=[source("fund_disclosure","missing")];}else{const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),15_000);try{call.output=await diagnosePublicEtfs(codes.map((code)=>({code})),controller.signal);}finally{clearTimeout(timer);}call.sources=[source("fund_disclosure")];}}
     else if(tool.toolId==="run_pretrade_check"){call.output=pretradeResult(goal,snapshot);call.sources=[source("user_portfolio",Object.keys(snapshot.holdings??{}).length?"available":"missing"),source("user_input")];}
     else if(tool.toolId==="run_trade_attribution"){call.output=await tradeAttributionResult(goal);call.sources=[source("user_uploaded_csv",(call.output as {data_status?:string}).data_status==="missing"?"missing":"available")];}
@@ -102,7 +176,7 @@ async function executeSafeTool(tool:ToolDefinition,goal:string,snapshot:AgentSna
     else if(tool.toolId==="get_news"||tool.toolId==="get_social_content"){call.output={data_status:"not_executed",message:"当前没有已授权的自动数据源；请上传内容或由管理员配置合法接口。"};call.sources=tool.dataSources.map((id)=>source(id,"unavailable"));}
     else{call.output={data_status:"not_executed",message:"工具已匹配，但仍需要补充输入或在对应工具页面执行。"};call.sources=tool.dataSources.map((id)=>source(id,"missing"));}
     const dataStatus=String((call.output as {data_status?:string})?.data_status??"");
-    const incomplete=["missing","missing_input","insufficient_sample","not_executed"].includes(dataStatus);
+    const incomplete=["missing","missing_input","insufficient_sample","not_executed","unavailable"].includes(dataStatus);
     call.status="completed";call.completed_at=now();call.reliability=reliability({status:incomplete?"degraded":"healthy",last_success_at:call.completed_at,message:incomplete?"工具完成，但缺少部分输入或数据":"工具执行完成",warnings:incomplete?["部分结果：缺失项已在输出中标明"]:[],retryable:incomplete,allow_signal:false});return call;
   }catch(error){call.status="failed";call.error=error instanceof Error?error.message:"工具执行失败";call.completed_at=now();call.sources=tool.dataSources.map((id)=>source(id,"unavailable"));call.reliability=reliability({status:"failed",error_code:"AGENT_TOOL_FAILED",message:call.error,warnings:["未生成依赖该工具的最终信号"],retryable:true,allow_signal:false});return call;}
 }
@@ -129,7 +203,10 @@ export async function createAgentTask(input:{goal:string;route?:string;selected_
     extraction.missing_information=[...new Set([...extraction.missing_information,...deterministicRisk.missingInformation])];
   }
   const requestsNewTool=/(增加|创建|做一个|开发).*(工具|分析器|检测器|模拟器)/.test(goal);
-  const capabilityGap=extraction.tool_requirements.some((toolId)=>!TOOL_CATALOG.some((item)=>item.toolId===toolId))||(requestsNewTool&&!/(ETF|回测|定投|交易前|交易复盘|社交内容|社交热点|指标解释|提醒|观察列表|工作台)/i.test(goal));
+  // Provider output is a proposal, not the source of truth for platform capabilities.
+  // Only show a capability gap when the user explicitly asked to build a new tool.
+  const unknownRequestedTools=extraction.tool_requirements.filter((toolId)=>!TOOL_CATALOG.some((item)=>item.toolId===toolId));
+  const capabilityGap=requestsNewTool&&(unknownRequestedTools.length>0||!/(ETF|回测|定投|交易前|交易复盘|社交内容|社交热点|指标解释|提醒|观察列表|工作台)/i.test(goal));
   let matched=[...new Map([...searchTools(extraction),...TOOL_CATALOG.filter((item)=>extraction.tool_requirements.includes(item.toolId))].map((item)=>[item.toolId,item])).values()].filter((item)=>item.permissionLevel!=="restricted"&&toolAllowedForGoal(item,goal));
   if(capabilityGap)matched=[];
   const toolCalls:AgentToolCall[]=[];for(const item of matched.filter((tool)=>tool.permissionLevel==="safe").slice(0,5))toolCalls.push(await executeSafeTool(item,goal,snapshot));
@@ -139,7 +216,7 @@ export async function createAgentTask(input:{goal:string;route?:string;selected_
   let workspacePatch:AgentTask["workspace_patch"]=null;let workspaceCommandId:string|undefined;let themeSchema:ThemeSchema|undefined;
   if(needsWorkspace){const previewResult=await createAssistantPreview(goal,current.id);workspacePatch=previewResult.parsed;if(workspacePatch.canApply)workspaceCommandId=previewResult.commandId;themeSchema=themePatchFromRequirements(extraction.style_requirements.length?extraction.style_requirements:[goal],workspacePatch.preview.theme)?.themeSchema;}
   const steps:AgentPlanStep[]=[{id:"step_1",title:"理解目标与当前上下文",tool:null,status:"completed",requires_confirmation:false},...matched.slice(0,6).map((item,index)=>({id:`step_${index+2}`,title:item.name,tool:item.toolId,status:(item.permissionLevel==="safe"?(toolCalls.find((call)=>call.tool_id===item.toolId)?.status??"pending"):"pending") as AgentPlanStep["status"],requires_confirmation:item.permissionLevel!=="safe"})),...(needsWorkspace?[{id:`step_${matched.length+2}`,title:"预览工作台修改",tool:"workspace_orchestrator",status:workspacePatch?.canApply?"completed" as const:"failed" as const,requires_confirmation:true}]:[])];
-  const sources=[...new Map(toolCalls.flatMap((call)=>call.sources).map((item)=>[`${item.source_id}:${item.status}`,item])).values()];const warnings=[...extraction.risk_constraints,...extraction.missing_information];if(plannerMode==="local_fallback")warnings.push("当前没有可用的真实 AI Provider；任务结构由本地 Registry 匹配生成，不会冒充模型规划。");
+  const sources=[...new Map(toolCalls.flatMap((call)=>call.sources).map((item)=>[`${item.source_id}:${item.status}`,item])).values()];const warnings=[...extraction.risk_constraints];if(plannerMode==="local_fallback")warnings.push("当前没有可用的真实 AI Provider；任务结构由本地 Registry 匹配生成，不会冒充模型规划。");
   const toolHealth=toolCalls.length?aggregateReliability(toolCalls.map((call)=>call.reliability),"Agent 工具链"):reliability({status:plannerMode==="provider"?"healthy":"degraded",message:plannerMode==="provider"?"规划模型可用":"使用本地 Registry 降级规划",warnings:plannerMode==="provider"?[]:["未调用真实 AI 模型"],allow_signal:false});const failedCalls=toolCalls.filter((call)=>call.status==="failed");if(failedCalls.length)warnings.push(`部分结果缺失：${failedCalls.map((call)=>call.tool_id).join("、")} 可单独重试。`);
   const workspaceFailed=needsWorkspace&&!workspacePatch?.canApply;const requiresConfirmation=Boolean(!workspaceFailed&&(workspaceCommandId||matched.some((item)=>item.permissionLevel==="confirm")));const taskId=`task_${crypto.randomUUID().replaceAll("-","").slice(0,14)}`;const nothingSucceeded=toolCalls.length>0&&failedCalls.length===toolCalls.length;const task:AgentTask={type:"agent_task",task_id:taskId,goal,status:extraction.risk_level==="restricted"||workspaceFailed||nothingSucceeded?"failed":requiresConfirmation?"awaiting_confirmation":"completed",created_at:now(),updated_at:now(),provider:actualProvider,model:actualModel,planner_mode:plannerMode,extraction,plan:{task_id:taskId,goal,steps,requires_confirmation:requiresConfirmation},steps,tool_calls:toolCalls,workspace_patch:workspacePatch,workspace_command_id:workspaceCommandId,theme_schema:themeSchema,result:toolCalls.map((call)=>({tool:call.tool_id,status:call.status,output:call.output})),warnings,sources,tool_proposal:capabilityGap?createToolProposal(goal):undefined,requires_confirmation:requiresConfirmation,original_input:goal,reliability:extraction.risk_level==="restricted"?reliability({status:"blocked",error_code:"RESTRICTED_FINANCIAL_ACTION",message:"这项请求包含平台不能执行或承诺的内容",warnings:extraction.risk_constraints,allow_signal:false}):workspaceFailed?reliability({status:"failed",error_code:"WORKSPACE_PREVIEW_FAILED",message:"工作台修改预览无法应用",retryable:true,allow_signal:false}):toolHealth};
   const latestResult=await readUserSnapshot();

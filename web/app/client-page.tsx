@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -24,6 +24,8 @@ import {
   History,
   LockKeyhole,
   LogOut,
+  Maximize2,
+  Minimize2,
   Plus,
   Search,
   ShieldCheck,
@@ -94,7 +96,7 @@ type LiveQuote = {
   amount?: number;
   update_time?: string;
 };
-type LiveHistoryPoint = { date: string; close: number; volume?: number };
+type LiveHistoryPoint = { date: string; open?: number; high?: number; low?: number; close: number; volume?: number };
 type LiveEvidencePayload = {
   assessment?: { status: string; summary: string; mode: "rules" | "openai"; evidence_indices?: number[] };
   feed?: { items?: Array<{ published_at: string; title: string; summary: string; source: string; url: string; category: string; relation: string; corroborating_sources?: string[] }>; data_mode?: string; updated_at?: string; sources?: string[]; message?: string };
@@ -623,6 +625,8 @@ function buildComparablePath(points: LiveHistoryPoint[], minimum: number, maximu
 function PriceChart({ stock, liveHistory, events, holdingValue, capital }: { stock: Stock; liveHistory?: LiveHistoryPoint[]; events: Array<{ date: string; type: string; title: string; detail: string; source: string; url: string }>; holdingValue: number; capital: number }) {
   const [range, setRange] = useState<"1月" | "3月" | "1年">("1月");
   const [selectedEventIndex, setSelectedEventIndex] = useState(0);
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const [benchmark, setBenchmark] = useState<LiveHistoryPoint[]>([]);
   useEffect(() => {
     const controller = new AbortController();
@@ -668,18 +672,34 @@ function PriceChart({ stock, liveHistory, events, holdingValue, capital }: { sto
   const activeEventIndex = Math.min(selectedEventIndex, Math.max(eventMarkers.length - 1, 0));
   const selectedEvent = eventMarkers[activeEventIndex];
   const mechanicalImpact = selectedEvent && holdingValue > 0 ? holdingValue * selectedEvent.nextChange / 100 : 0;
+  const hoveredPoint = hoverIndex === null ? undefined : livePoints[hoverIndex];
+  const hoveredPrevious = hoverIndex === null || hoverIndex === 0 ? undefined : livePoints[hoverIndex - 1];
+  const hoveredChange = hoveredPoint && hoveredPrevious ? (hoveredPoint.close / hoveredPrevious.close - 1) * 100 : undefined;
+  const hoveredBenchmark = hoverIndex === null ? undefined : benchmarkComparable[hoverIndex];
+  const hoveredBenchmarkPrevious = hoverIndex === null || hoverIndex === 0 ? undefined : benchmarkComparable[hoverIndex - 1];
+  const hoveredBenchmarkChange = hoveredBenchmark && hoveredBenchmarkPrevious ? (hoveredBenchmark.close / hoveredBenchmarkPrevious.close - 1) * 100 : undefined;
+  const hoverX = hoverIndex === null ? 0 : hoverIndex / Math.max(livePoints.length - 1, 1) * 690;
+  const hoverY = hoveredPoint ? 174 - ((hoveredPoint.close - chartLow) / Math.max(chartHigh - chartLow, 0.01)) * 148 : 0;
+  const moveHover = (event: ReactMouseEvent<SVGSVGElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const viewX = (event.clientX - bounds.left) / bounds.width * 690;
+    setHoverIndex(Math.max(0, Math.min(livePoints.length - 1, Math.round(viewX / 690 * (livePoints.length - 1)))));
+  };
+  const moveHoverByKey = (direction: number) => setHoverIndex((current) => Math.max(0, Math.min(livePoints.length - 1, (current ?? livePoints.length - 1) + direction)));
   return (
-    <div className="chart-block">
-      <div className="chart-toolbar"><div><strong>{livePoints.length} 个交易日</strong><span>真实历史数据</span><small>{livePoints.length < rangeDays ? `当前来源仅覆盖 ${livePoints.length} 个交易日，少于所选 ${range}` : `数据区间：最高 ${chartHigh.toFixed(axisPrecision)} · 最低 ${chartLow.toFixed(axisPrecision)}`}</small></div><div className="range-selector">{(["1月", "3月", "1年"] as const).map((item) => <button key={item} className={range === item ? "active" : ""} onClick={() => setRange(item)}>{item}</button>)}</div></div>
+    <div className={expanded ? "chart-block expanded" : "chart-block"}>
+      <div className="chart-toolbar"><div><strong>{livePoints.length} 个交易日</strong><span>真实历史数据</span><small>{livePoints.length < rangeDays ? `当前来源仅覆盖 ${livePoints.length} 个交易日，少于所选 ${range}` : `数据区间：最高 ${chartHigh.toFixed(axisPrecision)} · 最低 ${chartLow.toFixed(axisPrecision)}`}</small></div><div className="chart-controls"><div className="range-selector">{(["1月", "3月", "1年"] as const).map((item) => <button key={item} className={range === item ? "active" : ""} onClick={() => { setRange(item); setHoverIndex(null); }}>{item}</button>)}</div><button className="chart-size-toggle" onClick={() => setExpanded((current) => !current)} aria-label={expanded ? "收起走势图" : "放大走势图"}>{expanded ? <Minimize2 /> : <Maximize2 />}</button></div></div>
       <div className="chart-wrap">
       <div className="chart-grid">{axisValues.map((value) => <span key={value}>{value}</span>)}</div>
-      <svg viewBox="0 0 690 190" role="img" aria-label={`${stock.name}${range}价格走势`} preserveAspectRatio="none">
+      <svg viewBox="0 0 690 190" role="img" tabIndex={0} aria-label={`${stock.name}${range}价格、基准、成交量与事件走势；可用左右方向键逐日查看`} preserveAspectRatio="none" onMouseMove={moveHover} onMouseLeave={() => setHoverIndex(null)} onKeyDown={(event) => { if (event.key === "ArrowLeft") { event.preventDefault(); moveHoverByKey(-1); } if (event.key === "ArrowRight") { event.preventDefault(); moveHoverByKey(1); } }}>
         <defs><linearGradient id="chartFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="var(--primary)" stopOpacity=".2"/><stop offset="100%" stopColor="var(--primary)" stopOpacity="0"/></linearGradient></defs>
         <path className="chart-area" d={`${chartPath} L690 190 L0 190 Z`} />
         <path className="chart-line" d={chartPath} />
         {benchmarkPath && <path className="chart-benchmark-line" d={benchmarkPath} />}
-        {eventMarkers.map((event, index) => <g key={`${event.date}-${event.title}`} className={index === activeEventIndex ? "chart-event-marker active" : "chart-event-marker"}><line x1={event.x} x2={event.x} y1="18" y2="178" /><circle cx={event.x} cy={event.y} r={index === activeEventIndex ? 6 : 4} /><text x={event.x} y="14" textAnchor="middle">{index + 1}</text></g>)}
+        {eventMarkers.map((event, index) => <g key={`${event.date}-${event.title}`} role="button" tabIndex={0} aria-label={`查看事件 ${index + 1}：${event.title}`} onClick={() => setSelectedEventIndex(index)} onKeyDown={(keyEvent) => { if (keyEvent.key === "Enter" || keyEvent.key === " ") setSelectedEventIndex(index); }} className={index === activeEventIndex ? "chart-event-marker active" : "chart-event-marker"}><line x1={event.x} x2={event.x} y1="18" y2="178" /><circle cx={event.x} cy={event.y} r={index === activeEventIndex ? 6 : 4} /><text x={event.x} y="14" textAnchor="middle">{index + 1}</text></g>)}
+        {hoveredPoint && hoverIndex !== null && <g className="chart-hover-guide"><line x1={hoverX} x2={hoverX} y1="18" y2="178" /><line x1="0" x2="690" y1={hoverY} y2={hoverY} /><circle cx={hoverX} cy={hoverY} r="4" /></g>}
       </svg>
+      {hoveredPoint && hoverIndex !== null && <div className={hoverX > 500 ? "research-chart-tooltip align-right" : "research-chart-tooltip"} style={{ left: `calc(42px + ${(hoverX / 690) * 100}% - ${(hoverX / 690) * 42}px)` }} role="status"><strong>{hoveredPoint.date.slice(0, 10)}</strong><span>收盘<b>{hoveredPoint.close.toFixed(axisPrecision === 0 ? 2 : axisPrecision)}</b></span><span>当日涨跌<b className={typeof hoveredChange === "number" ? hoveredChange >= 0 ? "price-up" : "price-down" : ""}>{typeof hoveredChange === "number" ? `${hoveredChange >= 0 ? "+" : ""}${hoveredChange.toFixed(2)}%` : "—"}</b></span><span>同期沪深300<b>{typeof hoveredBenchmarkChange === "number" ? `${hoveredBenchmarkChange >= 0 ? "+" : ""}${hoveredBenchmarkChange.toFixed(2)}%` : "—"}</b></span><span>成交量<b>{hoveredPoint.volume ? hoveredPoint.volume.toLocaleString("zh-CN") : "暂无"}</b></span></div>}
       <div className="chart-dates">{dateLabels.map((date) => <span key={date}>{date.slice(0, 10)}</span>)}</div>
       </div>
       <div className="volume-strip" aria-label="成交量变化">{volumes.map((value, index) => <i key={index} style={{ height: `${value}%` }} />)}</div>
@@ -756,7 +776,7 @@ function QuantVerificationPanel({ stock, saved, onSave, onDecision }: { stock: S
 }
 
 function ResearchView({ stock, setStock, action, setAction, onDecision, holdings, watched, onWatch, capital, records, quantVerifications, onSaveQuant }: { stock: Stock; setStock: (stock: Stock) => void; action: TradeAction; setAction: (action: TradeAction) => void; onDecision: (context?: ResearchDecisionContext) => void; holdings: HoldingBook; watched: WatchBook; onWatch: (stock: Stock, followed: boolean) => void; capital: number; records: DecisionResult[]; quantVerifications: SavedQuantVerification[]; onSaveQuant: (verification: SavedQuantVerification) => void }) {
-  const [panel, setPanel] = useState<"概览" | "财报体检" | "价格与事件" | "证据链" | "定量核实" | "待验证问题">("概览");
+  const [panel, setPanel] = useState<"概览" | "财报体检" | "价格与事件" | "证据链" | "定量核实" | "待验证问题">("价格与事件");
   const [researchQuery, setResearchQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const followedStocks = useMemo(() => Object.fromEntries(Object.keys(watched).map((code) => [code, true])), [watched]);
@@ -771,7 +791,7 @@ function ResearchView({ stock, setStock, action, setAction, onDecision, holdings
     const frame = window.requestAnimationFrame(() => {
       setResearchQuery(savedQuestion);
       setSubmittedQuery(savedQuestion);
-      setPanel("概览");
+      setPanel("价格与事件");
     });
     return () => window.cancelAnimationFrame(frame);
   }, [stock.code, recordedJudgment?.reason]);

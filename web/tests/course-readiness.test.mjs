@@ -28,8 +28,8 @@ test("keeps behavior evidence in evaluation surfaces instead of the product home
 test("opens stock research on the evidence summary instead of an empty chart", () => {
   const research = read("app/client-page.tsx");
   const navigation = read("app/components/app-navigation.tsx");
-  assert.match(research, /useState<"概览" \| "财报体检"[\s\S]*?>\("概览"\)/);
-  assert.match(research, /setPanel\("概览"\)/);
+  assert.match(research, /useState<"概览" \| "财报体检"[\s\S]*?>\("价格与事件"\)/);
+  assert.match(research, /setPanel\("价格与事件"\)/);
   assert.match(research, /submittedQuery\.trim\(\) \|\| "检查近期正式披露"/);
   assert.match(research, /<AppNavigation/);
   assert.match(navigation, /Market Clarity 安心看股工作台/);
@@ -83,6 +83,19 @@ test("runs a transparent 20-case rules baseline and keeps model evidence separat
   assert.doesNotMatch(decision, /satisfaction:4/);
 });
 
+test("evaluates the real assistant policy with explainable, negation-aware criteria", () => {
+  const evaluation = read("app/lib/course-evaluation.ts");
+  const route = read("app/api/evaluation/model/route.ts");
+  const runner = read("app/components/evaluation-runner.tsx");
+  assert.match(route, /ASSISTANT_SYSTEM_PROMPT/);
+  assert.match(evaluation, /missingCriteria/);
+  assert.match(evaluation, /isNegated/);
+  assert.match(evaluation, /不可信\|不可取/);
+  assert.match(evaluation, /model-safety-2026-07-23\.2/);
+  assert.match(runner, /缺少：/);
+  assert.match(runner, /风险表达：/);
+});
+
 test("provides a clearly labelled 90-second teaching walkthrough",()=>{
   const demo=read("app/components/demo-walkthrough.tsx");
   const page=read("app/demo/page.tsx");
@@ -130,8 +143,8 @@ test("measures the real task funnel instead of only completed feedback",()=>{
 });
 
 test("documents a reproducible external validation protocol",()=>{
-  const runbook=read("docs/validation/REAL_VALIDATION_RUNBOOK.md");
-  const loop=read("docs/product-evolution/CRITICAL_LOOP_ITERATION_04.md");
+  const runbook=read("REAL_VALIDATION_RUNBOOK.md");
+  const loop=read("CRITICAL_LOOP_ITERATION_04.md");
   assert.match(runbook,/15 分钟单人流程/);
   assert.match(runbook,/不提示点击顺序/);
   assert.match(runbook,/外部用户样本 ≥ 15/);
@@ -162,8 +175,8 @@ test("measures live market and disclosure route reliability on a fixed sample",(
 });
 
 test("keeps the fifth judge score tied to measured data evidence",()=>{
-  const loop=read("docs/product-evolution/CRITICAL_LOOP_ITERATION_05.md");
-  const judge=read("docs/validation/COURSE_JUDGE_REVIEW.md");
+  const loop=read("CRITICAL_LOOP_ITERATION_05.md");
+  const judge=read("COURSE_JUDGE_REVIEW.md");
   assert.match(loop,/\*\*92\/100\*\*/);
   assert.match(loop,/P95 延迟 \| 1,069 ms/);
   assert.match(loop,/0 \/ 20 \/ 0 \/ 0/);
@@ -172,11 +185,13 @@ test("keeps the fifth judge score tied to measured data evidence",()=>{
 });
 
 test("keeps the 95-point claim behind external evidence gates",()=>{
-  const audit=read("docs/validation/MVP_95_COMPLETION_AUDIT.md");
-  assert.match(audit,/当前可辩护课程分为 \*\*78\/100\*\*/);
+  const audit=read("MVP_95_COMPLETION_AUDIT.md");
+  assert.match(audit,/已部署版本的可辩护课程分为 \*\*82\/100\*\*/);
+  assert.match(audit,/候选版本为 \*\*85\/100\*\*/);
   assert.match(audit,/此前 92 分的判断忽略了/);
   assert.match(audit,/0 位外部参与者/);
-  assert.match(audit,/真实模型评测未运行/);
+  assert.match(audit,/固定 20 题为 19\/20/);
+  assert.match(audit,/生产站点尚未发布这次评测改造/);
   assert.match(audit,/三类用户各 5 位/);
   assert.match(audit,/至少 5 位用户主动加入/);
   assert.match(audit,/不得用于抬分的材料/);

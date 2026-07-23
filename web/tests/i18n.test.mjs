@@ -29,7 +29,7 @@ test("localizes the first-use workspace and cross-route product shell", () => {
   const guide = read("app/components/contextual-guide.tsx");
   assert.match(workbench, /Start with what matters to you now/);
   assert.match(workbench, /Market overview/);
-  assert.match(workbench, /Latest verifiable event/);
+  assert.match(workbench, /Latest formal information/);
   assert.match(shell, /ETF diagnosis/);
   assert.match(shell, /Quant research/);
   assert.match(shell, /Task agent/);
