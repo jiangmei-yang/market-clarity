@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BriefcaseBusiness, Check,
   ChevronDown, CircleAlert, FileSearch, Gauge,
@@ -216,14 +216,14 @@ function HomeStockFocus({ initialStock, context, holdings, total }: { initialSto
   const [stockResults,setStockResults]=useState<StockSearchItem[]>([]);
   const [stockSearchStatus,setStockSearchStatus]=useState<"idle"|"loading"|"ready"|"empty"|"error">("idle");
   const [reloadToken,setReloadToken]=useState(0);
-  const [rangeDays,setRangeDays]=useState<20|60|120>(60);const [windowEndOffset,setWindowEndOffset]=useState(0);const [chartMode,setChartMode]=useState<"candlestick"|"line">("candlestick");const [chartSize,setChartSize]=useState<"compact"|"standard"|"large">("standard");const [showMa5,setShowMa5]=useState(true);const [showMa20,setShowMa20]=useState(true);const [showBenchmark,setShowBenchmark]=useState(true);const [showVolume,setShowVolume]=useState(true);const [hoverIndex,setHoverIndex]=useState<number|null>(null);const [lockedIndex,setLockedIndex]=useState<number|null>(null);const [chartFullscreen,setChartFullscreen]=useState(false);
+  const [rangeDays,setRangeDays]=useState<20|60|120>(60);const [windowEndOffset,setWindowEndOffset]=useState(0);const [chartMode,setChartMode]=useState<"candlestick"|"line">("candlestick");const [chartSize,setChartSize]=useState<"compact"|"standard"|"large">("standard");const [researchView,setResearchView]=useState<"market"|"relative"|"risk"|"event">("market");const [showMa5,setShowMa5]=useState(true);const [showMa20,setShowMa20]=useState(true);const [showBenchmark,setShowBenchmark]=useState(true);const [showVolume,setShowVolume]=useState(true);const [hoverIndex,setHoverIndex]=useState<number|null>(null);const [lockedIndex,setLockedIndex]=useState<number|null>(null);const [chartFullscreen,setChartFullscreen]=useState(false);const [brushRange,setBrushRange]=useState<{start:number;end:number}|null>(null);const [dragStartIndex,setDragStartIndex]=useState<number|null>(null);const [dragCurrentIndex,setDragCurrentIndex]=useState<number|null>(null);const dragMoved=useRef(false);
   useEffect(()=>setSelectionSource((current)=>current==="saved"?current:context),[context]);
   useEffect(()=>{try{const saved=window.localStorage.getItem("market-clarity:home-stock");if(!saved)return;const parsed=JSON.parse(saved) as StockSearchItem;if(/^\d{6}$/.test(parsed.code)&&parsed.name){setSelectedStock(parsed);setSelectionSource("saved");}}catch{/* Invalid local preference is ignored. */}},[]);
   useEffect(()=>{const query=stockQuery.trim();if(query.length<2){setStockResults([]);setStockSearchStatus("idle");return;}const controller=new AbortController();setStockSearchStatus("loading");const timer=window.setTimeout(()=>{fetch(`/api/stocks/search?q=${encodeURIComponent(query)}&limit=6`,{cache:"no-store",signal:controller.signal}).then(async(response)=>{const payload=await response.json() as {items?:Array<{code?:string;name?:string;industry?:string}>};if(!response.ok)throw new Error("search unavailable");const items=(payload.items??[]).map(item=>({code:String(item.code??""),name:String(item.name??item.code??""),industry:item.industry})).filter(item=>/^\d{6}$/.test(item.code));if(/^\d{6}$/.test(query)&&!items.some(item=>item.code===query))items.unshift({code:query,name:query,industry:pick(isEnglish,"名称随行情载入","Name loads with market data")});setStockResults(items);setStockSearchStatus(items.length?"ready":"empty");}).catch(error=>{if((error as Error).name!=="AbortError")setStockSearchStatus("error")});},280);return()=>{window.clearTimeout(timer);controller.abort()};},[stockQuery,isEnglish]);
-  const chooseStock=(item:StockSearchItem)=>{setSelectedStock(item);setSelectionSource("saved");setStockQuery("");setStockResults([]);setStockSearchStatus("idle");setWindowEndOffset(0);setHoverIndex(null);setLockedIndex(null);try{window.localStorage.setItem("market-clarity:home-stock",JSON.stringify(item));}catch{/* Preference persistence is optional. */}};
+  const chooseStock=(item:StockSearchItem)=>{setSelectedStock(item);setSelectionSource("saved");setStockQuery("");setStockResults([]);setStockSearchStatus("idle");setWindowEndOffset(0);setBrushRange(null);setHoverIndex(null);setLockedIndex(null);try{window.localStorage.setItem("market-clarity:home-stock",JSON.stringify(item));}catch{/* Preference persistence is optional. */}};
   useEffect(()=>{if(!chartFullscreen)return;const close=(event:KeyboardEvent)=>{if(event.key==="Escape")setChartFullscreen(false)};document.body.classList.add("chart-overlay-open");window.addEventListener("keydown",close);return()=>{document.body.classList.remove("chart-overlay-open");window.removeEventListener("keydown",close)};},[chartFullscreen]);
   useEffect(()=>{setStock({status:"loading",name:selectedStock.name,points:[]});const controller=new AbortController();const timer=window.setTimeout(()=>controller.abort(),8_500);const code=selectedStock.code;Promise.allSettled([fetch(`/api/information/${code}`,{cache:"no-store",signal:controller.signal}),fetch(`/api/evidence/${code}?reason=${encodeURIComponent("首页股票观察")}`,{cache:"no-store",signal:controller.signal}),fetch("/api/market/benchmark",{cache:"no-store",signal:controller.signal})]).then(async([informationResult,evidenceResult,benchmarkResult])=>{if(informationResult.status!=="fulfilled")throw new Error("行情暂时不可用");const response=informationResult.value;const payload=await response.json() as {status?:StockFocus["status"];provider?:string;data_timestamp?:string;message?:string;quote?:{stock_name?:string;current_price?:number;change_percent?:number};history?:{data?:Array<{open?:number;high?:number;low?:number;close?:number;date?:string;volume?:number}>}};let event:StockFocus["event"];if(evidenceResult.status==="fulfilled"&&evidenceResult.value.ok){const evidence=await evidenceResult.value.json() as {feed?:{items?:Array<{published_at?:string;date?:string;title?:string;source?:string;url?:string}>}};const item=evidence.feed?.items?.[0];if(item?.title)event={date:String(item.published_at??item.date??""),title:item.title,source:item.source??"公开资料",url:item.url};}let benchmark:StockPoint[]=[];if(benchmarkResult.status==="fulfilled"&&benchmarkResult.value.ok){const benchmarkPayload=await benchmarkResult.value.json() as {data?:Array<{date?:string;close?:number}>};benchmark=(benchmarkPayload.data??[]).map((item)=>({close:Number(item.close),date:String(item.date??""),volume:0})).filter((item)=>item.date&&Number.isFinite(item.close)).slice(-260);}setStock({status:response.ok?(payload.status??"partial"):"unavailable",name:payload.quote?.stock_name||selectedStock.name,provider:payload.provider,dataTimestamp:payload.data_timestamp,price:Number(payload.quote?.current_price)||undefined,change:Number(payload.quote?.change_percent)||0,points:(payload.history?.data??[]).map((item)=>({open:Number(item.open)||undefined,high:Number(item.high)||undefined,low:Number(item.low)||undefined,close:Number(item.close),date:String(item.date??""),volume:Number(item.volume)||0})).filter((item)=>Number.isFinite(item.close)).slice(-120),benchmark,event,message:payload.message});}).catch(()=>setStock({status:"unavailable",name:selectedStock.name,points:[],message:"行情暂时不可用"})).finally(()=>window.clearTimeout(timer));return()=>{window.clearTimeout(timer);controller.abort()};},[reloadToken,selectedStock]);
-  const maxWindowOffset=Math.max(0,stock.points.length-rangeDays);const safeWindowOffset=Math.min(windowEndOffset,maxWindowOffset);const windowEnd=stock.points.length-safeWindowOffset;const windowStart=Math.max(0,windowEnd-rangeDays);const points=stock.points.slice(windowStart,windowEnd);const values=points.map((item)=>item.close);
+  const maxWindowOffset=Math.max(0,stock.points.length-rangeDays);const safeWindowOffset=Math.min(windowEndOffset,maxWindowOffset);const windowEnd=stock.points.length-safeWindowOffset;const windowStart=Math.max(0,windowEnd-rangeDays);const basePoints=stock.points.slice(windowStart,windowEnd);const safeBrush=brushRange&&brushRange.start<basePoints.length?{start:Math.max(0,brushRange.start),end:Math.min(basePoints.length-1,brushRange.end)}:null;const points=safeBrush?basePoints.slice(safeBrush.start,safeBrush.end+1):basePoints;const values=points.map((item)=>item.close);
   const benchmarkByDate=new Map((stock.benchmark??[]).map((item)=>[item.date.slice(0,10),item.close]));
   const benchmarkRaw=points.map((item)=>benchmarkByDate.get(item.date.slice(0,10))??null);
   const benchmarkBase=benchmarkRaw.find((value):value is number=>typeof value==="number");
@@ -241,9 +241,18 @@ function HomeStockFocus({ initialStock, context, holdings, total }: { initialSto
   const eventIndex=eventInRange?points.reduce((best,point,index)=>Math.abs(new Date(point.date).getTime()-eventTime)<Math.abs(new Date(points[best].date).getTime()-eventTime)?index:best,0):-1;
   const eventMove=eventIndex>=0&&points[eventIndex]?.close&&latest?(latest.close/points[eventIndex].close-1)*100:null;
   const activeIndex=hoverIndex??lockedIndex;const hovered=activeIndex===null?null:points[activeIndex];const hoveredMa5=activeIndex===null?null:ma5[activeIndex];const hoveredMa20=activeIndex===null?null:ma20[activeIndex];const hoveredPrevious=activeIndex===null||activeIndex===0?null:points[activeIndex-1];const hoveredChange=hovered&&hoveredPrevious?(hovered.close/hoveredPrevious.close-1)*100:null;const hoveredAmplitude=hovered&&hovered.low&&hovered.high?(hovered.high/hovered.low-1)*100:null;const hoveredBenchmark=activeIndex===null?null:benchmarkRaw[activeIndex];const priorBenchmark=activeIndex===null||activeIndex===0?null:benchmarkRaw[activeIndex-1];const hoveredBenchmarkChange=hoveredBenchmark&&priorBenchmark?(hoveredBenchmark/priorBenchmark-1)*100:null;const hoveredBenchmarkPeriod=hoveredBenchmark&&benchmarkBase?(hoveredBenchmark/benchmarkBase-1)*100:null;const candleWidth=Math.max(2,Math.min(8,(width-left-right)/Math.max(1,points.length)*.62));
-  const moveHover=(event:ReactMouseEvent<SVGSVGElement>)=>{const bounds=event.currentTarget.getBoundingClientRect();const viewX=(event.clientX-bounds.left)/bounds.width*width;const index=Math.round((viewX-left)/(width-left-right)*Math.max(1,points.length-1));setHoverIndex(Math.max(0,Math.min(points.length-1,index)));};
+  const indexAtEvent=(event:ReactMouseEvent<SVGSVGElement>)=>{const bounds=event.currentTarget.getBoundingClientRect();const viewX=(event.clientX-bounds.left)/bounds.width*width;const index=Math.round((viewX-left)/(width-left-right)*Math.max(1,points.length-1));return Math.max(0,Math.min(points.length-1,index));};
+  const moveHover=(event:ReactMouseEvent<SVGSVGElement>)=>{const index=indexAtEvent(event);if(dragStartIndex!==null){setDragCurrentIndex(index);if(Math.abs(index-dragStartIndex)>1)dragMoved.current=true;return;}setHoverIndex(index);};
+  const finishBrush=(event:ReactMouseEvent<SVGSVGElement>)=>{if(dragStartIndex===null)return;const end=indexAtEvent(event);if(Math.abs(end-dragStartIndex)>=3){const localStart=Math.min(dragStartIndex,end),localEnd=Math.max(dragStartIndex,end);const offset=safeBrush?.start??0;setBrushRange({start:offset+localStart,end:offset+localEnd});setHoverIndex(null);setLockedIndex(null);}setDragStartIndex(null);setDragCurrentIndex(null);};
   const moveHoverByKey=(direction:number)=>{const next=Math.max(0,Math.min(points.length-1,(activeIndex??points.length-1)+direction));setLockedIndex(next);setHoverIndex(null);};
-  const shiftWindow=(direction:"earlier"|"later")=>{setWindowEndOffset((current)=>direction==="earlier"?Math.min(maxWindowOffset,current+5):Math.max(0,current-5));setHoverIndex(null);setLockedIndex(null);};
+  const shiftWindow=(direction:"earlier"|"later")=>{setWindowEndOffset((current)=>direction==="earlier"?Math.min(maxWindowOffset,current+5):Math.max(0,current-5));setBrushRange(null);setHoverIndex(null);setLockedIndex(null);};
+  const applyResearchView=(view:typeof researchView)=>{
+    setResearchView(view);setWindowEndOffset(0);setBrushRange(null);setHoverIndex(null);setLockedIndex(null);
+    if(view==="market"){setRangeDays(60);setChartMode("candlestick");setShowMa5(true);setShowMa20(true);setShowBenchmark(false);setShowVolume(true);}
+    if(view==="relative"){setRangeDays(60);setChartMode("line");setShowMa5(false);setShowMa20(false);setShowBenchmark(true);setShowVolume(false);}
+    if(view==="risk"){setRangeDays(120);setChartMode("line");setShowMa5(false);setShowMa20(true);setShowBenchmark(false);setShowVolume(false);}
+    if(view==="event"){setRangeDays(120);setChartMode("line");setShowMa5(false);setShowMa20(false);setShowBenchmark(false);setShowVolume(true);}
+  };
   const updated=stock.dataTimestamp?new Date(stock.dataTimestamp).toLocaleDateString(locale,{month:"numeric",day:"numeric"}):"";
   const displayedName=stock.name||(selectedStock.code===DEFAULT_HOME_STOCK.code?pick(isEnglish,"贵州茅台","Kweichow Moutai"):selectedStock.name);
   const industryLabel=(item:StockSearchItem)=>item.industry&&!/(数据不足|行业待载入|industry pending)/i.test(item.industry)?item.industry:pick(isEnglish,"A 股","A-share");
@@ -278,6 +287,14 @@ function HomeStockFocus({ initialStock, context, holdings, total }: { initialSto
       <header><div><strong>{pick(isEnglish,"组合观察","Portfolio watch")}</strong><span>{recordedAssets.length>=2?pick(isEnglish,`${recordedAssets.length} 个已记录持仓`,`${recordedAssets.length} recorded holdings`):pick(isEnglish,"示例标的不计入持仓与风险计算","Examples do not affect portfolio or risk calculations")}</span></div><Link href="/portfolio">{pick(isEnglish,"管理持仓","Manage holdings")}<ArrowRight/></Link></header>
       <div>{switcherAssets.map(item=><button key={item.code} className={selectedStock.code===item.code?"active":undefined} onClick={()=>chooseStock({code:item.code,name:item.name,industry:item.industry})}><span><strong>{item.name}</strong><small>{item.code} · {item.industry||pick(isEnglish,"行业待补充","Sector pending")}</small></span>{item.isExample?<em>{pick(isEnglish,"示例","Example")}</em>:<b>{total?percent(item.value/total):"—"}</b>}</button>)}</div>
     </section>
+    <nav className="home-research-presets" aria-label={pick(isEnglish,"研究视图","Research views")}>
+      <strong>{pick(isEnglish,"研究视图","Research views")}</strong>
+      <button className={researchView==="market"?"active":undefined} onClick={()=>applyResearchView("market")}>{pick(isEnglish,"行情与量价","Price & volume")}</button>
+      <button className={researchView==="relative"?"active":undefined} onClick={()=>applyResearchView("relative")}>{pick(isEnglish,"相对指数","Relative strength")}</button>
+      <button className={researchView==="risk"?"active":undefined} onClick={()=>applyResearchView("risk")}>{pick(isEnglish,"风险区间","Risk window")}</button>
+      <button className={researchView==="event"?"active":undefined} onClick={()=>applyResearchView("event")}>{pick(isEnglish,"事件核验","Event check")}</button>
+      <Link href={`/quant?asset=${selectedStock.code}`}>{pick(isEnglish,"策略验证","Strategy test")}<ArrowRight/></Link>
+    </nav>
     <div className="home-stock-body">
       <div className="home-stock-chart">
         <div className="home-chart-toolbar">
@@ -293,7 +310,8 @@ function HomeStockFocus({ initialStock, context, holdings, total }: { initialSto
           </div>
           <div className="home-chart-controls" aria-label={pick(isEnglish, "图表范围和尺寸", "Chart range and size")}>
             {eventIndex>=0&&<button className="home-event-jump" onClick={()=>{setLockedIndex(eventIndex);setHoverIndex(null)}}>{pick(isEnglish, "定位公告", "Jump to filing")}</button>}
-            {([20,60,120] as const).map(days=><button key={days} className={rangeDays===days?"active":""} onClick={()=>{setRangeDays(days);setWindowEndOffset(0);setHoverIndex(null);setLockedIndex(null)}}>{days}D</button>)}
+            {([20,60,120] as const).map(days=><button key={days} className={rangeDays===days?"active":""} onClick={()=>{setRangeDays(days);setWindowEndOffset(0);setBrushRange(null);setHoverIndex(null);setLockedIndex(null)}}>{days}D</button>)}
+            {brushRange&&<button className="home-brush-reset" onClick={()=>{setBrushRange(null);setHoverIndex(null);setLockedIndex(null)}}>{pick(isEnglish, "重置缩放", "Reset zoom")}</button>}
             <select value={chartSize} onChange={(event)=>setChartSize(event.target.value as typeof chartSize)} aria-label={pick(isEnglish, "图表大小", "Chart size")}>
               <option value="compact">{pick(isEnglish, "紧凑", "Compact")}</option>
               <option value="standard">{pick(isEnglish, "标准", "Standard")}</option>
@@ -309,17 +327,20 @@ function HomeStockFocus({ initialStock, context, holdings, total }: { initialSto
             viewBox={`0 0 ${width} ${height}`}
             role="img"
             tabIndex={0}
+            onMouseDown={(event)=>{const index=indexAtEvent(event);dragMoved.current=false;setDragStartIndex(index);setDragCurrentIndex(index)}}
             onMouseMove={moveHover}
-            onMouseLeave={()=>setHoverIndex(null)}
-            onClick={()=>{if(hoverIndex!==null)setLockedIndex(current=>current===hoverIndex?null:hoverIndex)}}
+            onMouseUp={finishBrush}
+            onMouseLeave={()=>{setHoverIndex(null);if(dragStartIndex!==null){setDragStartIndex(null);setDragCurrentIndex(null);dragMoved.current=false}}}
+            onClick={()=>{if(dragMoved.current){dragMoved.current=false;return;}if(hoverIndex!==null)setLockedIndex(current=>current===hoverIndex?null:hoverIndex)}}
             onKeyDown={event=>{
               if(event.key==="ArrowLeft"){event.preventDefault();moveHoverByKey(-1)}
               if(event.key==="ArrowRight"){event.preventDefault();moveHoverByKey(1)}
               if(event.key==="Escape"){setLockedIndex(null)}
             }}
-            aria-label={pick(isEnglish, `近 ${rangeDays} 个交易日价格、均线、成交量与事件走势图；悬停查看，点击固定，左右方向键移动`, `Price, moving averages, volume and events over the last ${rangeDays} trading days; hover to inspect, click to pin, or use arrow keys`)}
+            aria-label={pick(isEnglish, `近 ${rangeDays} 个交易日价格、均线、成交量与事件走势图；悬停查看，横向拖动框选放大，点击固定，左右方向键移动`, `Price, moving averages, volume and events over the last ${rangeDays} trading days; hover to inspect, drag-select to zoom, click to pin, or use arrow keys`)}
           >
             <defs><linearGradient id="home-price-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="currentColor" stopOpacity=".15"/><stop offset="1" stopColor="currentColor" stopOpacity="0"/></linearGradient></defs>
+            {dragStartIndex!==null&&dragCurrentIndex!==null&&<rect className="chart-brush-selection" x={Math.min(x(dragStartIndex),x(dragCurrentIndex))} y={top} width={Math.abs(x(dragCurrentIndex)-x(dragStartIndex))} height={volumeBottom-top}/>}
             {yTicks.map((tick)=><g key={tick}><line className="chart-grid" x1={left} x2={width-right} y1={y(tick)} y2={y(tick)}/><text className="chart-axis-label" x={left-8} y={y(tick)+4} textAnchor="end">{tick.toFixed(0)}</text></g>)}
             {chartMode==="line"
               ? <><polygon className="chart-area" points={`${left},${priceBottom} ${coordinates} ${width-right},${priceBottom}`}/><polyline className="chart-line" points={coordinates}/></>
@@ -362,13 +383,13 @@ function HomeStockFocus({ initialStock, context, holdings, total }: { initialSto
               max={maxWindowOffset}
               value={maxWindowOffset-safeWindowOffset}
               disabled={maxWindowOffset===0}
-              onChange={(event)=>{setWindowEndOffset(maxWindowOffset-Number(event.target.value));setHoverIndex(null);setLockedIndex(null)}}
+              onChange={(event)=>{setWindowEndOffset(maxWindowOffset-Number(event.target.value));setBrushRange(null);setHoverIndex(null);setLockedIndex(null)}}
               aria-label={pick(isEnglish, "拖动查看更早或更晚的时间窗口", "Drag to inspect earlier or later windows")}
             />
             <button disabled={safeWindowOffset===0} onClick={()=>shiftWindow("later")} aria-label={pick(isEnglish, "向后查看五个交易日", "Move five trading days later")}><ArrowRight /></button>
-            <button disabled={safeWindowOffset===0} onClick={()=>{setWindowEndOffset(0);setHoverIndex(null);setLockedIndex(null)}}>{pick(isEnglish, "回到最新", "Latest")}</button>
+            <button disabled={safeWindowOffset===0&&!brushRange} onClick={()=>{setWindowEndOffset(0);setBrushRange(null);setHoverIndex(null);setLockedIndex(null)}}>{pick(isEnglish, "回到最新", "Latest")}</button>
           </div>
-          <div className="home-chart-hint">{pick(isEnglish, "悬停读数 · 点击固定 · 拖动下方时间窗 · 左右键逐日查看", "Hover for values · click to pin · drag the timeline · arrow keys move by day")}</div>
+          <div className="home-chart-hint">{pick(isEnglish, "悬停读数 · 横向框选局部放大 · 点击固定 · 左右键逐日查看", "Hover for values · drag across the chart to zoom · click to pin · arrow keys move by day")}</div>
         </>:<div className={`home-chart-empty ${stock.status}`}>
           <CircleAlert />
           <strong>{stock.status==="loading"?pick(isEnglish, "正在读取公开行情", "Loading public market data"):pick(isEnglish, "本次行情没有返回", "Market data did not return")}</strong>

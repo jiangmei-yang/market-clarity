@@ -25,6 +25,8 @@ The stock panel was also exercised as a real control rather than accepted from s
 
 The main chart is now paired with a portfolio switcher. Accounts with several holdings see up to six recorded assets ordered by recorded value. Accounts with zero or one holding receive clearly labelled example watch assets so a classroom demo can show multi-asset research without writing fictional positions into the user's portfolio or risk calculations.
 
+The default view now exposes the product's research depth without a tutorial paragraph. A compact research-view switcher applies working presets for price/volume, relative strength, a longer risk window and event verification, while strategy validation opens the existing quant surface. The chart itself supports horizontal brush selection: dragging across a local date interval zooms into it, the selection is visibly highlighted, and users can reset the zoom without losing the selected asset.
+
 ## Score impact
 
 This improves activation and repeat-use plausibility, but it does not create external validation evidence. The local candidate remains **86/100** until real users complete the flow and provide auditable behavioural evidence.
