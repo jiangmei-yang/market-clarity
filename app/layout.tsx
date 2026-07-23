@@ -29,5 +29,5 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="zh-CN"><body><I18nProvider><TooltipProvider delay={350}><GlobalAIAssistantProvider>{children}<ContextualGuide/><SystemReliabilityCenter/></GlobalAIAssistantProvider></TooltipProvider></I18nProvider></body></html>;
+  return <html lang="zh-CN"><body><I18nProvider><TooltipProvider delay={350}><GlobalAIAssistantProvider>{children}<div className="global-utility-dock"><SystemReliabilityCenter/><ContextualGuide/></div></GlobalAIAssistantProvider></TooltipProvider></I18nProvider></body></html>;
 }
