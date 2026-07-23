@@ -22,7 +22,7 @@ test("server-renders the personal investment workbench", async () => {
   const html = await response.text();
   assert.match(html, /<title>Market Clarity · 安心看股<\/title>/i);
   assert.match(html, /市场概览/);
-  assert.match(html, /默认研究：贵州茅台/);
+  assert.match(html, /打开股票研究/);
   assert.match(html, /从你现在关心的事情开始/);
   assert.match(html, /研究股票/);
   assert.match(html, /核实一条消息/);
@@ -92,6 +92,11 @@ test("keeps onboarding contextual and navigation grouped by user goal", async ()
   assert.match(workbench, /hoveredAmplitude/);
   assert.match(workbench, /开盘/);
   assert.match(workbench, /published_at/);
+  assert.match(workbench, /输入股票名称或 6 位代码/);
+  assert.match(workbench, /api\/stocks\/search\?q=/);
+  assert.match(workbench, /market-clarity:home-stock/);
+  assert.match(workbench, /selectedStock\.code/);
+  assert.match(css, /\.home-stock-search-results/);
   assert.match(workbench, /Shanghai Composite/);
   assert.doesNotMatch(workbench, /怎么看这张图/);
 });
