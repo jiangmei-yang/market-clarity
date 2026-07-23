@@ -23,8 +23,9 @@ test("server-renders the personal investment workbench", async () => {
   assert.match(html, /<title>Market Clarity · 安心看股<\/title>/i);
   assert.match(html, /市场概览/);
   assert.match(html, /打开股票研究/);
-  assert.match(html, /从你现在关心的事情开始/);
-  assert.match(html, /研究股票/);
+  assert.match(html, /今日决策台/);
+  assert.match(html, /研究、核实或检查组合/);
+  assert.match(html, /研究当前标的/);
   assert.match(html, /核实一条消息/);
   assert.match(html, /我的规则/);
   assert.match(html, /检查我的组合/);
@@ -35,6 +36,19 @@ test("server-renders the personal investment workbench", async () => {
   assert.match(html, /id="main-content"/);
   assert.match(html, /data-theme="light_quiet"/);
   assert.match(html, /安静浅色/);
+});
+
+test("puts recorded personal decisions before the default stock chart", async () => {
+  const response = await render();
+  const html = await response.text();
+  const decisionDesk = html.indexOf("今日决策台");
+  const commonActions = html.indexOf("常用操作");
+  const stockWatch = html.indexOf("股票观察");
+  assert.ok(decisionDesk > -1);
+  assert.ok(commonActions > decisionDesk);
+  assert.ok(stockWatch > commonActions);
+  assert.match(html, /没有提醒不等于没有风险/);
+  assert.match(html, /最大持仓/);
 });
 
 test("keeps onboarding contextual and navigation grouped by user goal", async () => {

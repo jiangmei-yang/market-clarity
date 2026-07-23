@@ -23,12 +23,13 @@ test("exposes an accessible language switch in the shared navigation", () => {
   assert.match(navigation, /Product guide/);
 });
 
-test("localizes the first-use workspace and cross-route product shell", () => {
+test("localizes the decision-led workspace and cross-route product shell", () => {
   const workbench = read("app/components/personal-workbench.tsx");
   const shell = read("app/components/product-tool-shell.tsx");
   const guide = read("app/components/contextual-guide.tsx");
   const assistant = read("app/components/global-ai-assistant.tsx");
-  assert.match(workbench, /Start with what matters to you now/);
+  assert.match(workbench, /Today’s decision desk/);
+  assert.match(workbench, /Research, verify or review your portfolio/);
   assert.match(workbench, /Market overview/);
   assert.match(workbench, /Latest formal information/);
   assert.match(workbench, /Recorded amount/);

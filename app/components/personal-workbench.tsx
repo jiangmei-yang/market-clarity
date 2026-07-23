@@ -142,39 +142,85 @@ function HomeSurface({ snapshot, profile, workspace }: { snapshot: Snapshot; pro
   const { isEnglish, locale } = useI18n();
   const holdings = snapshot.holdings ?? {};
   const total = Object.values(holdings).reduce((sum, item) => sum + Number(item.value || 0), 0);
-  const largest = Object.values(holdings).sort((a, b) => b.value - a.value)[0];
+  const largestEntry = Object.entries(holdings).sort(([, a], [, b]) => b.value - a.value)[0];
+  const largest = largestEntry?.[1];
   const largestWeight = largest && total ? largest.value / total : 0;
+  const preferredStock: StockSearchItem = largestEntry
+    ? { code: largestEntry[0], name: largest.name || largestEntry[0], industry: largest.industry }
+    : DEFAULT_HOME_STOCK;
   return <div className={`personal-content density-${workspace.density}`}>
     <HomeMarketPulse />
-    <HomeStockFocus />
+    <HomeDecisionBrief snapshot={snapshot} profile={profile} total={total} largest={largest} largestWeight={largestWeight} />
     <section className="personal-action-row compact" aria-labelledby="today-task" data-guide="home-actions">
-      <div><span>{pick(isEnglish, "快捷入口", "Start here")}</span><h1 id="today-task">{pick(isEnglish, "从你现在关心的事情开始", "Start with what matters to you now")}</h1></div>
+      <div><span>{pick(isEnglish, "常用操作", "Common actions")}</span><h1 id="today-task">{pick(isEnglish, "研究、核实或检查组合", "Research, verify or review your portfolio")}</h1></div>
       <div className="personal-entry-grid">
-        <Link href="/analysis?view=research&code=600519" className="primary"><FileSearch /><span><strong>{pick(isEnglish, "研究股票", "Research a stock")}</strong><small>{pick(isEnglish, "行情、公告、财务", "Prices, filings and financials")}</small></span><ArrowRight /></Link>
+        <Link href={`/analysis?view=research&code=${preferredStock.code}`} className="primary"><FileSearch /><span><strong>{pick(isEnglish, "研究当前标的", "Research current stock")}</strong><small>{preferredStock.name} · {pick(isEnglish, "行情、公告、财务", "prices, filings and financials")}</small></span><ArrowRight /></Link>
         <Link href="/opportunity"><MessageSquareWarning /><span><strong>{pick(isEnglish, "核实一条消息", "Check a claim")}</strong><small>{pick(isEnglish, "先分清事实和说法", "Separate evidence from inference")}</small></span><ArrowRight /></Link>
         <Link href="/portfolio"><BriefcaseBusiness /><span><strong>{pick(isEnglish, "检查我的组合", "Check my portfolio")}</strong><small>{total ? `${Object.keys(holdings).length} ${isEnglish ? "assets" : "个标的"} · ${new Intl.NumberFormat(locale, { style: "currency", currency: "CNY", maximumFractionDigits: 0 }).format(total)}` : pick(isEnglish, "添加持仓后查看暴露", "Add holdings to see exposure")}</small></span><ArrowRight /></Link>
       </div>
     </section>
 
+    <HomeStockFocus key={preferredStock.code} initialStock={preferredStock} context={largestEntry ? "largest_holding" : "default"} />
     {total > 0 && <section className="home-portfolio-strip" aria-label={pick(isEnglish, "组合摘要", "Portfolio summary")}><PortfolioOverviewMini total={total} holdings={holdings}/><Link href="/portfolio">{pick(isEnglish, "查看集中度与行业暴露", "View concentration and sector exposure")}<ArrowRight/></Link></section>}
     {profile && largest && largestWeight > profile.maxSingleWeight && <section className="home-priority-alert"><RiskInbox profile={profile} largest={largest} largestWeight={largestWeight}/></section>}
   </div>;
 }
 
+function HomeDecisionBrief({ snapshot, profile, total, largest, largestWeight }: { snapshot: Snapshot; profile?: InvestorProfile; total: number; largest?: Holding; largestWeight: number }) {
+  const { isEnglish, locale } = useI18n();
+  const latestDecision = snapshot.decisionRecords?.[0];
+  const latestClaim = snapshot.opportunityChecks?.[0];
+  const exceedsLimit = Boolean(profile && largest && largestWeight > profile.maxSingleWeight);
+  const shortDate = (value?: string) => {
+    if (!value) return "";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString(locale, { month: "short", day: "numeric" });
+  };
+  return <section className={`home-decision-brief${exceedsLimit ? " attention" : ""}`} aria-label={pick(isEnglish, "今日决策台", "Today’s decision desk")} data-guide="decision-brief">
+    <header>
+      <div><strong>{pick(isEnglish, "今日决策台", "Today’s decision desk")}</strong><span>{pick(isEnglish, "只显示你已记录的持仓、规则和检查结果", "Only your recorded holdings, rules and checks are shown")}</span></div>
+      <Link href="/analysis?view=newDecision">{pick(isEnglish, "开始一次检查", "Start a review")}<ArrowRight/></Link>
+    </header>
+    <div className="home-decision-facts">
+      <article className={exceedsLimit ? "attention" : ""}>
+        <span>{pick(isEnglish, "最大持仓", "Largest exposure")}</span>
+        <strong>{largest ? `${largest.name} · ${percent(largestWeight)}` : pick(isEnglish, "尚未记录持仓", "No holdings recorded")}</strong>
+        <small>{profile ? pick(isEnglish, `个人上限 ${percent(profile.maxSingleWeight)}`, `Personal limit ${percent(profile.maxSingleWeight)}`) : pick(isEnglish, "尚未设置个人仓位边界", "No personal position limit set")}</small>
+        <Link href={total ? "/portfolio" : "/profile"}>{total ? pick(isEnglish, "查看组合", "View portfolio") : pick(isEnglish, "添加持仓与边界", "Add holdings and limits")}<ArrowRight/></Link>
+      </article>
+      <article>
+        <span>{pick(isEnglish, "最近一次审查", "Latest review")}</span>
+        <strong>{latestDecision?.result || pick(isEnglish, "尚无审查记录", "No review recorded")}</strong>
+        <small>{latestDecision ? [latestDecision.stock?.name, shortDate(latestDecision.reviewedAt)].filter(Boolean).join(" · ") : pick(isEnglish, "完成一次检查后会显示结果", "Your latest result will appear here")}</small>
+        <Link href="/analysis?view=history">{pick(isEnglish, "查看审查记录", "View review history")}<ArrowRight/></Link>
+      </article>
+      <article>
+        <span>{pick(isEnglish, "消息核实", "Claim checks")}</span>
+        <strong>{latestClaim ? `${latestClaim.level} · ${latestClaim.score}/100` : pick(isEnglish, "尚无核实记录", "No claim checked")}</strong>
+        <small>{latestClaim ? `${latestClaim.text.slice(0, 32)}${latestClaim.text.length > 32 ? "…" : ""}${shortDate(latestClaim.checkedAt) ? ` · ${shortDate(latestClaim.checkedAt)}` : ""}` : pick(isEnglish, "粘贴消息或社交内容核对来源", "Check a message or social post against sources")}</small>
+        <Link href="/opportunity">{pick(isEnglish, "核实一条消息", "Check a claim")}<ArrowRight/></Link>
+      </article>
+    </div>
+    <footer><CircleAlert/>{pick(isEnglish, "没有提醒不等于没有风险；这里只汇总已经记录和计算的结果。", "No alert does not mean no risk. This view only summarizes recorded and calculated results.")}</footer>
+  </section>;
+}
+
 const DEFAULT_HOME_STOCK:StockSearchItem={code:"600519",name:"贵州茅台",industry:"消费"};
 
-function HomeStockFocus(){
+function HomeStockFocus({ initialStock, context }: { initialStock: StockSearchItem; context: "largest_holding" | "default" }){
   const { isEnglish, locale } = useI18n();
   const [stock,setStock]=useState<StockFocus>({status:"loading",points:[]});
-  const [selectedStock,setSelectedStock]=useState<StockSearchItem>(DEFAULT_HOME_STOCK);
+  const [selectedStock,setSelectedStock]=useState<StockSearchItem>(initialStock);
+  const [selectionSource,setSelectionSource]=useState<"largest_holding"|"default"|"saved">(context);
   const [stockQuery,setStockQuery]=useState("");
   const [stockResults,setStockResults]=useState<StockSearchItem[]>([]);
   const [stockSearchStatus,setStockSearchStatus]=useState<"idle"|"loading"|"ready"|"empty"|"error">("idle");
   const [reloadToken,setReloadToken]=useState(0);
   const [rangeDays,setRangeDays]=useState<20|60|120>(60);const [windowEndOffset,setWindowEndOffset]=useState(0);const [chartMode,setChartMode]=useState<"candlestick"|"line">("candlestick");const [chartSize,setChartSize]=useState<"compact"|"standard"|"large">("standard");const [showMa5,setShowMa5]=useState(true);const [showMa20,setShowMa20]=useState(true);const [showBenchmark,setShowBenchmark]=useState(true);const [showVolume,setShowVolume]=useState(true);const [hoverIndex,setHoverIndex]=useState<number|null>(null);const [lockedIndex,setLockedIndex]=useState<number|null>(null);const [chartFullscreen,setChartFullscreen]=useState(false);
-  useEffect(()=>{try{const saved=window.localStorage.getItem("market-clarity:home-stock");if(!saved)return;const parsed=JSON.parse(saved) as StockSearchItem;if(/^\d{6}$/.test(parsed.code)&&parsed.name)setSelectedStock(parsed);}catch{/* Invalid local preference is ignored. */}},[]);
+  useEffect(()=>setSelectionSource((current)=>current==="saved"?current:context),[context]);
+  useEffect(()=>{try{const saved=window.localStorage.getItem("market-clarity:home-stock");if(!saved)return;const parsed=JSON.parse(saved) as StockSearchItem;if(/^\d{6}$/.test(parsed.code)&&parsed.name){setSelectedStock(parsed);setSelectionSource("saved");}}catch{/* Invalid local preference is ignored. */}},[]);
   useEffect(()=>{const query=stockQuery.trim();if(query.length<2){setStockResults([]);setStockSearchStatus("idle");return;}const controller=new AbortController();setStockSearchStatus("loading");const timer=window.setTimeout(()=>{fetch(`/api/stocks/search?q=${encodeURIComponent(query)}&limit=6`,{cache:"no-store",signal:controller.signal}).then(async(response)=>{const payload=await response.json() as {items?:Array<{code?:string;name?:string;industry?:string}>};if(!response.ok)throw new Error("search unavailable");const items=(payload.items??[]).map(item=>({code:String(item.code??""),name:String(item.name??item.code??""),industry:item.industry})).filter(item=>/^\d{6}$/.test(item.code));if(/^\d{6}$/.test(query)&&!items.some(item=>item.code===query))items.unshift({code:query,name:query,industry:pick(isEnglish,"名称随行情载入","Name loads with market data")});setStockResults(items);setStockSearchStatus(items.length?"ready":"empty");}).catch(error=>{if((error as Error).name!=="AbortError")setStockSearchStatus("error")});},280);return()=>{window.clearTimeout(timer);controller.abort()};},[stockQuery,isEnglish]);
-  const chooseStock=(item:StockSearchItem)=>{setSelectedStock(item);setStockQuery("");setStockResults([]);setStockSearchStatus("idle");setWindowEndOffset(0);setHoverIndex(null);setLockedIndex(null);try{window.localStorage.setItem("market-clarity:home-stock",JSON.stringify(item));}catch{/* Preference persistence is optional. */}};
+  const chooseStock=(item:StockSearchItem)=>{setSelectedStock(item);setSelectionSource("saved");setStockQuery("");setStockResults([]);setStockSearchStatus("idle");setWindowEndOffset(0);setHoverIndex(null);setLockedIndex(null);try{window.localStorage.setItem("market-clarity:home-stock",JSON.stringify(item));}catch{/* Preference persistence is optional. */}};
   useEffect(()=>{if(!chartFullscreen)return;const close=(event:KeyboardEvent)=>{if(event.key==="Escape")setChartFullscreen(false)};document.body.classList.add("chart-overlay-open");window.addEventListener("keydown",close);return()=>{document.body.classList.remove("chart-overlay-open");window.removeEventListener("keydown",close)};},[chartFullscreen]);
   useEffect(()=>{setStock({status:"loading",name:selectedStock.name,points:[]});const controller=new AbortController();const timer=window.setTimeout(()=>controller.abort(),8_500);const code=selectedStock.code;Promise.allSettled([fetch(`/api/information/${code}`,{cache:"no-store",signal:controller.signal}),fetch(`/api/evidence/${code}?reason=${encodeURIComponent("首页股票观察")}`,{cache:"no-store",signal:controller.signal}),fetch("/api/market/benchmark",{cache:"no-store",signal:controller.signal})]).then(async([informationResult,evidenceResult,benchmarkResult])=>{if(informationResult.status!=="fulfilled")throw new Error("行情暂时不可用");const response=informationResult.value;const payload=await response.json() as {status?:StockFocus["status"];provider?:string;data_timestamp?:string;message?:string;quote?:{stock_name?:string;current_price?:number;change_percent?:number};history?:{data?:Array<{open?:number;high?:number;low?:number;close?:number;date?:string;volume?:number}>}};let event:StockFocus["event"];if(evidenceResult.status==="fulfilled"&&evidenceResult.value.ok){const evidence=await evidenceResult.value.json() as {feed?:{items?:Array<{published_at?:string;date?:string;title?:string;source?:string;url?:string}>}};const item=evidence.feed?.items?.[0];if(item?.title)event={date:String(item.published_at??item.date??""),title:item.title,source:item.source??"公开资料",url:item.url};}let benchmark:StockPoint[]=[];if(benchmarkResult.status==="fulfilled"&&benchmarkResult.value.ok){const benchmarkPayload=await benchmarkResult.value.json() as {data?:Array<{date?:string;close?:number}>};benchmark=(benchmarkPayload.data??[]).map((item)=>({close:Number(item.close),date:String(item.date??""),volume:0})).filter((item)=>item.date&&Number.isFinite(item.close)).slice(-260);}setStock({status:response.ok?(payload.status??"partial"):"unavailable",name:payload.quote?.stock_name||selectedStock.name,provider:payload.provider,dataTimestamp:payload.data_timestamp,price:Number(payload.quote?.current_price)||undefined,change:Number(payload.quote?.change_percent)||0,points:(payload.history?.data??[]).map((item)=>({open:Number(item.open)||undefined,high:Number(item.high)||undefined,low:Number(item.low)||undefined,close:Number(item.close),date:String(item.date??""),volume:Number(item.volume)||0})).filter((item)=>Number.isFinite(item.close)).slice(-120),benchmark,event,message:payload.message});}).catch(()=>setStock({status:"unavailable",name:selectedStock.name,points:[],message:"行情暂时不可用"})).finally(()=>window.clearTimeout(timer));return()=>{window.clearTimeout(timer);controller.abort()};},[reloadToken,selectedStock]);
   const maxWindowOffset=Math.max(0,stock.points.length-rangeDays);const safeWindowOffset=Math.min(windowEndOffset,maxWindowOffset);const windowEnd=stock.points.length-safeWindowOffset;const windowStart=Math.max(0,windowEnd-rangeDays);const points=stock.points.slice(windowStart,windowEnd);const values=points.map((item)=>item.close);
@@ -204,7 +250,7 @@ function HomeStockFocus(){
   const submitStockSearch=()=>{const exact=stockResults.find(item=>item.code===stockQuery.trim());const candidate=exact??stockResults[0]??(/^\d{6}$/.test(stockQuery.trim())?{code:stockQuery.trim(),name:stockQuery.trim()}:undefined);if(candidate)chooseStock(candidate);};
   return <section className={`home-stock-focus chart-size-${chartSize}${chartFullscreen?" chart-fullscreen":""}`} aria-label={pick(isEnglish, "股票观察", "Stock watch")} data-guide="stock-focus">
     <header>
-      <div><span>{pick(isEnglish, "今日观察", "Today’s watch")}</span><strong>{displayedName} <small>{selectedStock.code} · {selectedStock.code===DEFAULT_HOME_STOCK.code&&isEnglish?"Consumer":industryLabel(selectedStock)}</small></strong></div>
+      <div><span>{selectionSource==="largest_holding"?pick(isEnglish, "最大持仓观察", "Largest holding"):selectionSource==="saved"?pick(isEnglish, "已保存观察", "Saved watch"):pick(isEnglish, "默认观察", "Default watch")}</span><strong>{displayedName} <small>{selectedStock.code} · {selectedStock.code===DEFAULT_HOME_STOCK.code&&isEnglish?"Consumer":industryLabel(selectedStock)}</small></strong></div>
       <form className="home-stock-search" role="search" onSubmit={(event)=>{event.preventDefault();submitStockSearch()}}>
         <Search/>
         <input value={stockQuery} onChange={(event)=>setStockQuery(event.target.value)} placeholder={pick(isEnglish,"输入股票名称或 6 位代码","Search name or 6-digit code")} aria-label={pick(isEnglish,"切换首页观察股票","Change the stock shown on the workspace")}/>
@@ -239,7 +285,7 @@ function HomeStockFocus(){
             <select value={chartSize} onChange={(event)=>setChartSize(event.target.value as typeof chartSize)} aria-label={pick(isEnglish, "图表大小", "Chart size")}>
               <option value="compact">{pick(isEnglish, "紧凑", "Compact")}</option>
               <option value="standard">{pick(isEnglish, "标准", "Standard")}</option>
-              <option value="large">{pick(isEnglish, "宽幅", "Wide")}</option>
+              <option value="large">{pick(isEnglish, "放大", "Large")}</option>
             </select>
             <button className="chart-fullscreen-toggle" onClick={()=>setChartFullscreen(value=>!value)} aria-label={chartFullscreen?pick(isEnglish, "退出全屏图表", "Exit full-screen chart"):pick(isEnglish, "全屏查看图表", "Open full-screen chart")} title={chartFullscreen?pick(isEnglish, "退出全屏（Esc）", "Exit full screen (Esc)"):pick(isEnglish, "全屏查看", "Full screen")}>
               {chartFullscreen?<Minimize2/>:<Maximize2/>}
