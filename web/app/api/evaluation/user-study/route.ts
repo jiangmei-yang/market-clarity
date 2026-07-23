@@ -24,6 +24,6 @@ export async function POST(request:Request){
 }
 
 export async function DELETE(request:Request){
-  try{const body=await request.json() as {confirmed?:boolean};if(body.confirmed!==true)return NextResponse.json({message:"删除课程研究记录前必须明确确认"},{status:422});return NextResponse.json(await deleteCurrentUserStudyData());}
-  catch(error){return NextResponse.json({message:error instanceof Error?error.message:"无法删除课程研究记录"},{status:503});}
+  try{const body=await request.json() as {confirmed?:boolean};if(body.confirmed!==true)return NextResponse.json({message:"删除匿名体验反馈前必须明确确认"},{status:422});return NextResponse.json(await deleteCurrentUserStudyData());}
+  catch(error){return NextResponse.json({message:error instanceof Error?error.message:"无法删除匿名体验反馈"},{status:503});}
 }

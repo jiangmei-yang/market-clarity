@@ -28,7 +28,7 @@ const NAV_GROUPS = [
     { href: "/agent", label: "任务助手", detail: "用目标组织工具和流程", icon: Bot },
     { href: "/workspace", label: "编辑工作台", detail: "调整模块与布局", icon: Settings2 },
     { href: "/ai-settings", label: "AI 模型", detail: "模型连接与隐私", icon: Sparkles },
-    { href: "/features", label: "产品说明", detail: "功能、状态与 Pitch 证据", icon: BookOpen },
+    { href: "/features", label: "产品说明", detail: "功能、状态与使用边界", icon: BookOpen },
   ] },
 ] as const;
 

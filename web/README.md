@@ -26,7 +26,7 @@ npm run build
 ANXIN_API_URL=https://你的-python-api-域名
 ```
 
-不配置 `ANXIN_API_URL` 时，生产前端仍可完成核心 MVP：
+不配置 `ANXIN_API_URL` 时，生产前端仍可使用以下核心能力：
 
 - A 股与 ETF 行情、历史价格：服务端优先读取已配置的数据服务，再使用腾讯证券、东方财富公开日线接口；成功结果带来源和时间，并保留 24 小时轻量缓存；
 - 公告与证据核实：服务端读取公开披露接口，并保留原文链接；
@@ -50,7 +50,7 @@ ANXIN_API_URL=https://你的-python-api-域名
 - `/trade-tool`：持仓交易复盘。
 - `/features`：实时功能清单、当前限制与可追溯能力问答。
 
-组员和评审可先阅读 [TECHNICAL_ARCHITECTURE.md](./TECHNICAL_ARCHITECTURE.md)，再从 `/features` 核对当前部署真实具备的能力。
+开发者可先阅读 [TECHNICAL_ARCHITECTURE.md](./TECHNICAL_ARCHITECTURE.md) 了解系统设计；所有访问者都可以从 `/features` 查询当前可用能力、入口、限制与更新时间。
 
 ## 全局 AI 助手
 

@@ -77,7 +77,7 @@ test("runs a transparent 20-case rules baseline and keeps model evidence separat
   assert.match(studyRoute, /confirmed!==true/);
   assert.match(page, /三类目标用户各 5 位/);
   const decision = read("app/client-page.tsx");
-  assert.match(decision, /删除我的课程研究记录/);
+  assert.match(decision, /删除我的匿名体验反馈/);
   assert.match(decision, /consent:Boolean\(feedback\.consentedAtIso\)/);
   assert.doesNotMatch(decision, /satisfaction:4/);
 });
@@ -90,7 +90,7 @@ test("provides a clearly labelled 90-second teaching walkthrough",()=>{
   assert.match(demo,/demo-reason-options/);
   assert.match(demo,/不连接券商/);
   assert.match(demo,/afterWeight/);
-  assert.match(page,/90 秒课堂演示/);
+  assert.match(page,/90 秒产品演示/);
 });
 
 test("uses an action-based pricing experiment instead of counting an attitude question as revenue",()=>{

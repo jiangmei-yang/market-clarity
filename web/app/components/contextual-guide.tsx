@@ -49,10 +49,10 @@ const GUIDES:Array<{match:(path:string)=>boolean;guide:Guide}>=[
     {title:"核对执行计划",body:"确认数据来源、工具步骤和哪些操作需要批准。",action:"查看可用能力",href:"/features"},
     {title:"应用或撤销工作台修改",body:"界面变化始终先预览，并保留历史版本。",action:"编辑工作台",href:"/workspace"},
   ]}},
-  {match:path=>path==="/features",guide:{title:"产品说明怎么用",summary:"给组员和评委核对真实交付状态。",tasks:[
+  {match:path=>path==="/features",guide:{title:"产品说明怎么用",summary:"查询平台当前可用能力、入口与限制。",tasks:[
     {title:"先看产品闭环",body:"理解信息层与决策层如何连接。",action:"查看核心闭环",href:"/features#capability-flow"},
     {title:"核对当前交付",body:"区分已上线、测试中与当前不可用。",action:"查看能力清单",href:"/features#capability-matrix"},
-    {title:"模拟评委追问",body:"答案会附能力来源、入口、版本和更新时间。",action:"向知识库提问",href:"/features#capability-ask"},
+    {title:"查询具体能力",body:"答案会附能力来源、入口、版本和更新时间。",action:"向知识库提问",href:"/features#capability-ask"},
   ]}},
 ];
 
