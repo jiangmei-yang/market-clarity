@@ -622,11 +622,35 @@ function buildComparablePath(points: LiveHistoryPoint[], minimum: number, maximu
   }).join(" ");
 }
 
+function buildValuePath(values: Array<number | undefined>, minimum: number, maximum: number) {
+  const spread = Math.max(maximum - minimum, 0.01);
+  let started = false;
+  return values.map((value, index) => {
+    if (typeof value !== "number" || !Number.isFinite(value)) return "";
+    const x = index / Math.max(values.length - 1, 1) * 690;
+    const y = 174 - ((value - minimum) / spread) * 148;
+    const command = started ? "L" : "M";
+    started = true;
+    return `${command}${x.toFixed(1)} ${y.toFixed(1)}`;
+  }).filter(Boolean).join(" ");
+}
+
+function movingAverage(points: LiveHistoryPoint[], period: number) {
+  return points.map((_, index) => {
+    if (index + 1 < period) return undefined;
+    const window = points.slice(index + 1 - period, index + 1);
+    return window.reduce((sum, point) => sum + Number(point.close), 0) / period;
+  });
+}
+
 function PriceChart({ stock, liveHistory, events, holdingValue, capital }: { stock: Stock; liveHistory?: LiveHistoryPoint[]; events: Array<{ date: string; type: string; title: string; detail: string; source: string; url: string }>; holdingValue: number; capital: number }) {
   const [range, setRange] = useState<"1月" | "3月" | "1年">("1月");
   const [selectedEventIndex, setSelectedEventIndex] = useState(0);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [chartMode, setChartMode] = useState<"line" | "candlestick">("candlestick");
+  const [showMa5, setShowMa5] = useState(true);
+  const [showMa20, setShowMa20] = useState(true);
   const [benchmark, setBenchmark] = useState<LiveHistoryPoint[]>([]);
   useEffect(() => {
     const controller = new AbortController();
@@ -643,17 +667,44 @@ function PriceChart({ stock, liveHistory, events, holdingValue, capital }: { sto
   const benchmarkBase = benchmarkByDate.get(livePoints[0].date.slice(0, 10));
   const stockBase = Number(livePoints[0].close);
   const benchmarkComparable = benchmarkBase ? livePoints.map((point) => ({ date: point.date, close: stockBase * ((benchmarkByDate.get(point.date.slice(0, 10)) ?? benchmarkBase) / benchmarkBase) })) : [];
-  const combinedValues = [...livePoints, ...benchmarkComparable].map((point) => Number(point.close));
+  const ma5 = movingAverage(livePoints, 5);
+  const ma20 = movingAverage(livePoints, 20);
+  const ohlcValues = livePoints.flatMap((point) => [Number(point.low ?? point.close), Number(point.high ?? point.close)]);
+  const combinedValues = [
+    ...ohlcValues,
+    ...benchmarkComparable.map((point) => Number(point.close)),
+    ...ma5.filter((value): value is number => typeof value === "number"),
+    ...ma20.filter((value): value is number => typeof value === "number"),
+  ];
   const chartHigh = Math.max(...combinedValues);
   const chartLow = Math.min(...combinedValues);
   const chartPath = buildComparablePath(livePoints, chartLow, chartHigh);
   const benchmarkPath = benchmarkComparable.length > 1 ? buildComparablePath(benchmarkComparable, chartLow, chartHigh) : "";
+  const ma5Path = buildValuePath(ma5, chartLow, chartHigh);
+  const ma20Path = buildValuePath(ma20, chartLow, chartHigh);
   const axisPrecision = stock.price >= 100 ? 0 : 2;
   const axisValues = [0, 1 / 3, 2 / 3, 1].map((step) => (chartHigh - (chartHigh - chartLow) * step).toFixed(axisPrecision));
   const dateLabels = [livePoints[0].date, livePoints[Math.floor(livePoints.length / 3)].date, livePoints[Math.floor(livePoints.length * 2 / 3)].date, livePoints.at(-1)?.date ?? ""];
   const liveVolumes = livePoints.map((point) => Number(point.volume ?? 0));
   const maxVolume = Math.max(...liveVolumes, 1);
   const volumes = liveVolumes.map((value) => Math.max(8, value / maxVolume * 100));
+  const latestPoint = livePoints.at(-1)!;
+  const periodReturn = stockBase ? (latestPoint.close / stockBase - 1) * 100 : 0;
+  const benchmarkReturn = benchmarkComparable.length > 1 ? (benchmarkComparable.at(-1)!.close / benchmarkComparable[0].close - 1) * 100 : undefined;
+  const relativeReturn = typeof benchmarkReturn === "number" ? periodReturn - benchmarkReturn : undefined;
+  const dailyReturns = livePoints.slice(1).map((point, index) => point.close / livePoints[index].close - 1);
+  const annualizedVolatility = dailyReturns.length
+    ? Math.sqrt(dailyReturns.reduce((sum, value) => sum + value * value, 0) / dailyReturns.length) * Math.sqrt(252) * 100
+    : 0;
+  let runningPeak = livePoints[0].close;
+  let maxDrawdown = 0;
+  livePoints.forEach((point) => {
+    runningPeak = Math.max(runningPeak, point.close);
+    maxDrawdown = Math.min(maxDrawdown, (point.close / runningPeak - 1) * 100);
+  });
+  const volumeAverage = liveVolumes.filter((value) => value > 0).slice(-20);
+  const averageVolume = volumeAverage.length ? volumeAverage.reduce((sum, value) => sum + value, 0) / volumeAverage.length : 0;
+  const volumeRatio = averageVolume && latestPoint.volume ? latestPoint.volume / averageVolume : undefined;
   const eventMarkers = events.map((event) => {
     const pointIndex = livePoints.findIndex((point) => point.date >= event.date);
     if (pointIndex < 0 || event.date < livePoints[0].date || event.date > (livePoints.at(-1)?.date ?? "")) return undefined;
@@ -680,6 +731,8 @@ function PriceChart({ stock, liveHistory, events, holdingValue, capital }: { sto
   const hoveredBenchmarkChange = hoveredBenchmark && hoveredBenchmarkPrevious ? (hoveredBenchmark.close / hoveredBenchmarkPrevious.close - 1) * 100 : undefined;
   const hoverX = hoverIndex === null ? 0 : hoverIndex / Math.max(livePoints.length - 1, 1) * 690;
   const hoverY = hoveredPoint ? 174 - ((hoveredPoint.close - chartLow) / Math.max(chartHigh - chartLow, 0.01)) * 148 : 0;
+  const priceY = (value: number) => 174 - ((value - chartLow) / Math.max(chartHigh - chartLow, 0.01)) * 148;
+  const candleWidth = Math.max(2.4, Math.min(8, 430 / livePoints.length));
   const moveHover = (event: ReactMouseEvent<SVGSVGElement>) => {
     const bounds = event.currentTarget.getBoundingClientRect();
     const viewX = (event.clientX - bounds.left) / bounds.width * 690;
@@ -688,22 +741,40 @@ function PriceChart({ stock, liveHistory, events, holdingValue, capital }: { sto
   const moveHoverByKey = (direction: number) => setHoverIndex((current) => Math.max(0, Math.min(livePoints.length - 1, (current ?? livePoints.length - 1) + direction)));
   return (
     <div className={expanded ? "chart-block expanded" : "chart-block"}>
-      <div className="chart-toolbar"><div><strong>{livePoints.length} 个交易日</strong><span>真实历史数据</span><small>{livePoints.length < rangeDays ? `当前来源仅覆盖 ${livePoints.length} 个交易日，少于所选 ${range}` : `数据区间：最高 ${chartHigh.toFixed(axisPrecision)} · 最低 ${chartLow.toFixed(axisPrecision)}`}</small></div><div className="chart-controls"><div className="range-selector">{(["1月", "3月", "1年"] as const).map((item) => <button key={item} className={range === item ? "active" : ""} onClick={() => { setRange(item); setHoverIndex(null); }}>{item}</button>)}</div><button className="chart-size-toggle" onClick={() => setExpanded((current) => !current)} aria-label={expanded ? "收起走势图" : "放大走势图"}>{expanded ? <Minimize2 /> : <Maximize2 />}</button></div></div>
+      <div className="research-market-metrics" aria-label="当前区间关键市场指标">
+        <div><span>{range}收益</span><strong className={periodReturn >= 0 ? "price-up" : "price-down"}>{periodReturn >= 0 ? "+" : ""}{periodReturn.toFixed(1)}%</strong><small>区间首尾收盘</small></div>
+        <div><span>相对沪深300</span><strong className={typeof relativeReturn === "number" ? relativeReturn >= 0 ? "price-up" : "price-down" : ""}>{typeof relativeReturn === "number" ? `${relativeReturn >= 0 ? "+" : ""}${relativeReturn.toFixed(1)}%` : "暂无"}</strong><small>同起点比较</small></div>
+        <div><span>区间最大回撤</span><strong>{maxDrawdown.toFixed(1)}%</strong><small>从阶段高点计算</small></div>
+        <div><span>年化波动</span><strong>{annualizedVolatility.toFixed(1)}%</strong><small>日收益机械换算</small></div>
+        <div><span>最新成交量</span><strong>{typeof volumeRatio === "number" ? `${volumeRatio.toFixed(1)}×` : "暂无"}</strong><small>相对20日均量</small></div>
+        <div><span>可定位事件</span><strong>{events.length}</strong><small>当前公开资料</small></div>
+      </div>
+      <div className="chart-toolbar"><div><strong>{livePoints.length} 个交易日</strong><span>真实历史数据</span><small>{livePoints.length < rangeDays ? `当前来源仅覆盖 ${livePoints.length} 个交易日，少于所选 ${range}` : `数据区间：最高 ${chartHigh.toFixed(axisPrecision)} · 最低 ${chartLow.toFixed(axisPrecision)}`}</small></div><div className="chart-controls"><div className="chart-display-selector" aria-label="图表样式"><button className={chartMode === "candlestick" ? "active" : ""} onClick={() => setChartMode("candlestick")}>K线</button><button className={chartMode === "line" ? "active" : ""} onClick={() => setChartMode("line")}>折线</button><button className={showMa5 ? "active" : ""} aria-pressed={showMa5} onClick={() => setShowMa5((value) => !value)}>MA5</button><button className={showMa20 ? "active" : ""} aria-pressed={showMa20} onClick={() => setShowMa20((value) => !value)}>MA20</button></div><div className="range-selector">{(["1月", "3月", "1年"] as const).map((item) => <button key={item} className={range === item ? "active" : ""} onClick={() => { setRange(item); setHoverIndex(null); }}>{item}</button>)}</div><button className="chart-size-toggle" onClick={() => setExpanded((current) => !current)} aria-label={expanded ? "收起走势图" : "放大走势图"}>{expanded ? <Minimize2 /> : <Maximize2 />}</button></div></div>
       <div className="chart-wrap">
       <div className="chart-grid">{axisValues.map((value) => <span key={value}>{value}</span>)}</div>
       <svg viewBox="0 0 690 190" role="img" tabIndex={0} aria-label={`${stock.name}${range}价格、基准、成交量与事件走势；可用左右方向键逐日查看`} preserveAspectRatio="none" onMouseMove={moveHover} onMouseLeave={() => setHoverIndex(null)} onKeyDown={(event) => { if (event.key === "ArrowLeft") { event.preventDefault(); moveHoverByKey(-1); } if (event.key === "ArrowRight") { event.preventDefault(); moveHoverByKey(1); } }}>
         <defs><linearGradient id="chartFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="var(--primary)" stopOpacity=".2"/><stop offset="100%" stopColor="var(--primary)" stopOpacity="0"/></linearGradient></defs>
-        <path className="chart-area" d={`${chartPath} L690 190 L0 190 Z`} />
-        <path className="chart-line" d={chartPath} />
+        {chartMode === "line" && <><path className="chart-area" d={`${chartPath} L690 190 L0 190 Z`} /><path className="chart-line" d={chartPath} /></>}
+        {chartMode === "candlestick" && <g className="chart-candlesticks">{livePoints.map((point, index) => {
+          const open = Number(point.open ?? point.close);
+          const close = Number(point.close);
+          const high = Number(point.high ?? Math.max(open, close));
+          const low = Number(point.low ?? Math.min(open, close));
+          const x = index / Math.max(livePoints.length - 1, 1) * 690;
+          const rising = close >= open;
+          return <g key={`${point.date}-${index}`} className={rising ? "up" : "down"}><line x1={x} x2={x} y1={priceY(high)} y2={priceY(low)} /><rect x={x - candleWidth / 2} y={Math.min(priceY(open), priceY(close))} width={candleWidth} height={Math.max(1.5, Math.abs(priceY(open) - priceY(close)))} /></g>;
+        })}</g>}
         {benchmarkPath && <path className="chart-benchmark-line" d={benchmarkPath} />}
+        {showMa5 && ma5Path && <path className="chart-ma5-line" d={ma5Path} />}
+        {showMa20 && ma20Path && <path className="chart-ma20-line" d={ma20Path} />}
         {eventMarkers.map((event, index) => <g key={`${event.date}-${event.title}`} role="button" tabIndex={0} aria-label={`查看事件 ${index + 1}：${event.title}`} onClick={() => setSelectedEventIndex(index)} onKeyDown={(keyEvent) => { if (keyEvent.key === "Enter" || keyEvent.key === " ") setSelectedEventIndex(index); }} className={index === activeEventIndex ? "chart-event-marker active" : "chart-event-marker"}><line x1={event.x} x2={event.x} y1="18" y2="178" /><circle cx={event.x} cy={event.y} r={index === activeEventIndex ? 6 : 4} /><text x={event.x} y="14" textAnchor="middle">{index + 1}</text></g>)}
         {hoveredPoint && hoverIndex !== null && <g className="chart-hover-guide"><line x1={hoverX} x2={hoverX} y1="18" y2="178" /><line x1="0" x2="690" y1={hoverY} y2={hoverY} /><circle cx={hoverX} cy={hoverY} r="4" /></g>}
       </svg>
-      {hoveredPoint && hoverIndex !== null && <div className={hoverX > 500 ? "research-chart-tooltip align-right" : "research-chart-tooltip"} style={{ left: `calc(42px + ${(hoverX / 690) * 100}% - ${(hoverX / 690) * 42}px)` }} role="status"><strong>{hoveredPoint.date.slice(0, 10)}</strong><span>收盘<b>{hoveredPoint.close.toFixed(axisPrecision === 0 ? 2 : axisPrecision)}</b></span><span>当日涨跌<b className={typeof hoveredChange === "number" ? hoveredChange >= 0 ? "price-up" : "price-down" : ""}>{typeof hoveredChange === "number" ? `${hoveredChange >= 0 ? "+" : ""}${hoveredChange.toFixed(2)}%` : "—"}</b></span><span>同期沪深300<b>{typeof hoveredBenchmarkChange === "number" ? `${hoveredBenchmarkChange >= 0 ? "+" : ""}${hoveredBenchmarkChange.toFixed(2)}%` : "—"}</b></span><span>成交量<b>{hoveredPoint.volume ? hoveredPoint.volume.toLocaleString("zh-CN") : "暂无"}</b></span></div>}
+      {hoveredPoint && hoverIndex !== null && <div className={hoverX > 500 ? "research-chart-tooltip align-right" : "research-chart-tooltip"} style={{ left: `calc(42px + ${(hoverX / 690) * 100}% - ${(hoverX / 690) * 42}px)` }} role="status"><strong>{hoveredPoint.date.slice(0, 10)}</strong><span>开 / 高<b>{Number(hoveredPoint.open ?? hoveredPoint.close).toFixed(2)} / {Number(hoveredPoint.high ?? hoveredPoint.close).toFixed(2)}</b></span><span>低 / 收<b>{Number(hoveredPoint.low ?? hoveredPoint.close).toFixed(2)} / {hoveredPoint.close.toFixed(2)}</b></span><span>当日涨跌<b className={typeof hoveredChange === "number" ? hoveredChange >= 0 ? "price-up" : "price-down" : ""}>{typeof hoveredChange === "number" ? `${hoveredChange >= 0 ? "+" : ""}${hoveredChange.toFixed(2)}%` : "—"}</b></span><span>同期沪深300<b>{typeof hoveredBenchmarkChange === "number" ? `${hoveredBenchmarkChange >= 0 ? "+" : ""}${hoveredBenchmarkChange.toFixed(2)}%` : "—"}</b></span><span>成交量<b>{hoveredPoint.volume ? hoveredPoint.volume.toLocaleString("zh-CN") : "暂无"}</b></span></div>}
       <div className="chart-dates">{dateLabels.map((date) => <span key={date}>{date.slice(0, 10)}</span>)}</div>
       </div>
       <div className="volume-strip" aria-label="成交量变化">{volumes.map((value, index) => <i key={index} style={{ height: `${value}%` }} />)}</div>
-      <div className="chart-legend"><span><i className="price-line-key" />{stock.name}</span>{benchmarkPath && <span><i className="benchmark-line-key" />沪深300（同起点）</span>}<span><i className="event-key" />公司事件</span><span><i className="volume-key" />成交量</span></div>
+      <div className="chart-legend"><span><i className="price-line-key" />{stock.name} {chartMode === "candlestick" ? "K线" : "收盘价"}</span>{showMa5 && <span><i className="ma5-line-key" />MA5</span>}{showMa20 && <span><i className="ma20-line-key" />MA20</span>}{benchmarkPath && <span><i className="benchmark-line-key" />沪深300（同起点）</span>}<span><i className="event-key" />公司事件</span><span><i className="volume-key" />成交量</span></div>
       {eventMarkers.length > 0 ? <section className="event-price-bridge" aria-label="事件与价格变化对照">
         <div className="event-marker-list">{eventMarkers.map((event, index) => <button key={`${event.date}-${event.title}`} className={index === activeEventIndex ? "active" : ""} onClick={() => setSelectedEventIndex(index)}><i>{index + 1}</i><span><small>{event.date} · {event.type}</small><strong>{event.title}</strong></span></button>)}</div>
         {selectedEvent && <article className="selected-event-impact"><header><span><Badge variant="outline">事件 {activeEventIndex + 1}</Badge><small>{selectedEvent.source}</small></span>{selectedEvent.url && <a href={selectedEvent.url} target="_blank" rel="noreferrer">原始来源<ExternalLink /></a>}</header><h3>{selectedEvent.title}</h3><p>{selectedEvent.detail}</p><div className="event-impact-metrics"><div><span>下一交易日</span><strong className={selectedEvent.nextChange >= 0 ? "price-up" : "price-down"}>{selectedEvent.nextChange >= 0 ? "+" : ""}{selectedEvent.nextChange.toFixed(2)}%</strong><small>{selectedEvent.nextPoint.date.slice(0, 10)}</small></div><ArrowRight /><div><span>随后 5 个交易日</span><strong className={selectedEvent.fifthChange >= 0 ? "price-up" : "price-down"}>{selectedEvent.fifthChange >= 0 ? "+" : ""}{selectedEvent.fifthChange.toFixed(2)}%</strong><small>{typeof selectedEvent.benchmarkChange === "number" ? `同期沪深300 ${selectedEvent.benchmarkChange >= 0 ? "+" : ""}${selectedEvent.benchmarkChange.toFixed(2)}%` : "基准数据暂不可用"}</small></div><ArrowRight /><div><span>按当前持仓机械换算</span><strong>{holdingValue > 0 ? `${mechanicalImpact >= 0 ? "+" : "−"}¥${Math.abs(mechanicalImpact).toLocaleString("zh-CN", { maximumFractionDigits: 0 })}` : "尚无持仓"}</strong><small>{holdingValue > 0 ? `按下一交易日 · 占记录资金 ${capital > 0 ? (holdingValue / capital * 100).toFixed(1) : "0.0"}%` : "导入持仓后显示金额影响"}</small></div></div><footer>时间相邻不代表因果；跑赢基准也不能证明事件是价格变化原因。金额仅按价格变化机械换算。</footer></article>}

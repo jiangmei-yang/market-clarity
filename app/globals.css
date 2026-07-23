@@ -948,6 +948,13 @@ svg { stroke-width: 1.8; }
 .thesis-card > button svg { width: 12px; height: 12px; }
 .chart-panel > .section-header { border-bottom: 0; }
 .chart-block { padding: 4px 22px 12px; }
+.research-market-metrics { margin: 2px 0 10px 42px; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border-block: 1px solid var(--border); background: color-mix(in oklch, var(--background), white 38%); }
+.research-market-metrics > div { min-width: 0; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; border-right: 1px solid var(--border); }
+.research-market-metrics > div:last-child { border-right: 0; }
+.research-market-metrics span, .research-market-metrics small { overflow: hidden; color: var(--muted-foreground); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.research-market-metrics strong { color: var(--foreground); font-size: 15px; font-variant-numeric: tabular-nums; }
+.research-market-metrics strong.price-up { color: var(--up); }
+.research-market-metrics strong.price-down { color: var(--down); }
 .chart-toolbar { min-height: 55px; display: flex; align-items: center; justify-content: space-between; }
 .chart-toolbar > div:first-child { display: grid; grid-template-columns: auto auto; align-items: baseline; gap: 5px 9px; }
 .chart-toolbar strong { font-size: 18px; }
@@ -956,6 +963,10 @@ svg { stroke-width: 1.8; }
 .chart-block .chart-wrap { margin: 8px 0 6px; height: 286px; }
 .chart-block.expanded .chart-wrap { height: 430px; }
 .chart-controls { display: flex; align-items: center; gap: 7px; }
+.chart-display-selector { display: flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: 7px; background: var(--muted); }
+.chart-display-selector button { min-width: 37px; height: 24px; padding: 0 7px; border: 0; border-radius: 5px; background: transparent; color: var(--muted-foreground); font-size: 12px; font-weight: 650; }
+.chart-display-selector button:hover { color: var(--foreground); }
+.chart-display-selector button.active { background: var(--card); color: var(--primary); }
 .chart-size-toggle { width: 32px; height: 30px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 7px; background: var(--card); color: var(--muted-foreground); }
 .chart-size-toggle:hover { border-color: color-mix(in oklch, var(--primary), white 55%); color: var(--primary); }
 .chart-size-toggle svg { width: 15px; height: 15px; }
@@ -964,7 +975,14 @@ svg { stroke-width: 1.8; }
 .chart-hover-guide { pointer-events: none; }
 .chart-hover-guide line { stroke: color-mix(in oklch, var(--foreground), transparent 48%); stroke-width: 1; stroke-dasharray: 2 3; vector-effect: non-scaling-stroke; }
 .chart-hover-guide circle { fill: var(--card); stroke: var(--primary); stroke-width: 2; vector-effect: non-scaling-stroke; }
-.research-chart-tooltip { position: absolute; top: 24px; z-index: 4; min-width: 174px; padding: 10px 11px; display: grid; grid-template-columns: 1fr auto; gap: 4px 14px; transform: translateX(8px); border: 1px solid var(--border); border-radius: 8px; background: color-mix(in oklch, var(--card), transparent 2%); box-shadow: 0 8px 18px color-mix(in oklch, var(--foreground), transparent 90%); color: var(--foreground); pointer-events: none; font-size: 12px; font-variant-numeric: tabular-nums; }
+.chart-candlesticks line { stroke-width: 1.15; vector-effect: non-scaling-stroke; }
+.chart-candlesticks rect { vector-effect: non-scaling-stroke; }
+.chart-candlesticks .up line, .chart-candlesticks .up rect { stroke: var(--up); fill: color-mix(in oklch, var(--up), transparent 20%); }
+.chart-candlesticks .down line, .chart-candlesticks .down rect { stroke: var(--down); fill: color-mix(in oklch, var(--down), transparent 20%); }
+.chart-ma5-line, .chart-ma20-line { fill: none; stroke-width: 1.35; vector-effect: non-scaling-stroke; pointer-events: none; }
+.chart-ma5-line { stroke: var(--gold-strong); }
+.chart-ma20-line { stroke: color-mix(in oklch, var(--primary), #7559b8 48%); }
+.research-chart-tooltip { position: absolute; top: 24px; z-index: 4; min-width: 194px; padding: 10px 11px; display: grid; grid-template-columns: 1fr auto; gap: 4px 14px; transform: translateX(8px); border: 1px solid var(--border); border-radius: 8px; background: color-mix(in oklch, var(--card), transparent 2%); box-shadow: 0 4px 8px color-mix(in oklch, var(--foreground), transparent 90%); color: var(--foreground); pointer-events: none; font-size: 12px; font-variant-numeric: tabular-nums; }
 .research-chart-tooltip.align-right { transform: translateX(calc(-100% - 8px)); }
 .research-chart-tooltip strong { grid-column: 1 / -1; padding-bottom: 5px; border-bottom: 1px solid var(--border); }
 .research-chart-tooltip span { display: contents; color: var(--muted-foreground); }
@@ -978,6 +996,8 @@ svg { stroke-width: 1.8; }
 .chart-legend { margin: 9px 0 0 42px; display: flex; gap: 18px; color: var(--muted-foreground); font-size: 12px; }
 .chart-legend span { display: flex; align-items: center; gap: 5px; }
 .chart-legend i { width: 13px; height: 3px; display: block; background: var(--primary); }
+.chart-legend .ma5-line-key { background: var(--gold-strong); }
+.chart-legend .ma20-line-key { background: color-mix(in oklch, var(--primary), #7559b8 48%); }
 .chart-legend .event-key { background: var(--gold); }
 .chart-legend .volume-key { height: 8px; background: color-mix(in oklch, var(--primary), white 58%); }
 .chart-event-marker line { stroke: color-mix(in oklch, var(--gold), transparent 26%); stroke-dasharray: 3 4; vector-effect: non-scaling-stroke; }
@@ -1686,6 +1706,11 @@ svg { stroke-width: 1.8; }
   .overview-panel { grid-template-columns: 1fr; }
   .financial-check-grid { grid-template-columns: 1fr 1fr; }
   .research-query-bar { grid-template-columns: 190px minmax(240px, 1fr) auto; }
+  .research-market-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .research-market-metrics > div:nth-child(3) { border-right: 0; }
+  .research-market-metrics > div:nth-child(-n + 3) { border-bottom: 1px solid var(--border); }
+  .chart-toolbar { align-items: flex-start; gap: 12px; }
+  .chart-controls { justify-content: flex-end; flex-wrap: wrap; }
   .research-verdict { border-right: 0; }
   .decision-risk-grid { grid-template-columns: 1fr 1fr; }
   .decision-risk-grid article:nth-child(2) { border-right: 0; }

@@ -546,6 +546,15 @@ test("keeps the daily workflow and decision loop in the product source", async (
   assert.match(page, /research-chart-tooltip/);
   assert.match(page, /moveHoverByKey/);
   assert.match(page, /同期沪深300/);
+  assert.match(page, /research-market-metrics/);
+  assert.match(page, /区间最大回撤/);
+  assert.match(page, /年化波动/);
+  assert.match(page, /chartMode/);
+  assert.match(page, /candlestick/);
+  assert.match(page, /chart-candlesticks/);
+  assert.match(page, /chart-ma5-line/);
+  assert.match(page, /chart-ma20-line/);
+  assert.match(page, /开 \/ 高/);
   assert.match(page, /放大走势图/);
   assert.match(page, /财报体检/);
   assert.match(page, /研究一个具体问题/);
