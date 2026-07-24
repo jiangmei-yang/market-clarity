@@ -29,10 +29,10 @@ test("localizes the decision-led workspace and cross-route product shell", () =>
   const guide = read("app/components/contextual-guide.tsx");
   const assistant = read("app/components/global-ai-assistant.tsx");
   assert.match(workbench, /Today’s decision desk/);
-  assert.match(workbench, /Research, verify or review your portfolio/);
+  assert.match(workbench, /Continue research or review a decision/);
   assert.match(workbench, /Market overview/);
   assert.match(workbench, /Latest formal information/);
-  assert.match(workbench, /Recorded amount/);
+  assert.match(workbench, /Example watchlist · public market data/);
   assert.match(workbench, /Long-term investing/);
   assert.match(shell, /ETF diagnosis/);
   assert.match(shell, /Quant research/);
@@ -106,4 +106,113 @@ test("keeps all six stock research views operable in English",()=>{
   assert.match(page,/Market signals/);
   assert.match(page,/What to verify next/);
   assert.match(page,/What change would invalidate the thesis/);
+});
+
+test("keeps ETF diagnosis and trade review fully operable in English",()=>{
+  const etf=read("app/components/etf-workspace.tsx");
+  const trade=read("app/components/trade-review-workspace.tsx");
+  for(const label of [
+    "Add ETFs",
+    "Check underlying exposure",
+    "Underlying exposure will appear here",
+    "Overlapping underlying holdings",
+    "Top five disclosed holdings by ETF",
+    "Data coverage and disclosure dates",
+  ]) assert.match(etf,new RegExp(label));
+  assert.match(etf,/useI18n/);
+  assert.match(etf,/toLocaleDateString\(locale/);
+  for(const label of [
+    "Import trade records",
+    "Run review",
+    "Positions and realized results",
+    "FIFO match details",
+    "Trade timeline",
+    "Unrealized P&L and market value",
+  ]) assert.match(trade,new RegExp(label));
+  assert.match(trade,/useI18n/);
+  assert.match(trade,/toLocaleDateString\(locale/);
+});
+
+test("keeps portfolio checks and personal rules fully operable in English",()=>{
+  const workbench=read("app/components/personal-workbench.tsx");
+  const profileParser=read("app/lib/personal-workbench.ts");
+  for(const label of [
+    "Personal rules",
+    "Choose a starting point",
+    "Create candidate rules",
+    "Candidate rules extracted from your description",
+    "Single-asset limit",
+    "Confirm and enable",
+    "Portfolio check",
+    "Portfolio value",
+    "Largest position",
+    "Expand sector exposure for details",
+    "Main contributors:",
+    "Check for underlying overlap",
+    "Import trade CSV",
+  ]) assert.match(workbench,new RegExp(label));
+  assert.match(profileParser,/single \(\?:position\|asset\|holding\|stock\|ETF\)/);
+  assert.match(profileParser,/cash flow/);
+  assert.match(profileParser,/maximum loss/);
+});
+
+test("keeps the complete claim-check flow operable in English",()=>{
+  const workbench=read("app/components/personal-workbench.tsx");
+  const rules=read("app/lib/personal-workbench.ts");
+  for(const label of [
+    "Separate the claim from the evidence before applying your rules",
+    "Check the original wording",
+    "Upload screenshot",
+    "Why these items need verification",
+    "Continue to the trade-plan check",
+    "Reason for interest",
+    "Expected holding period",
+    "Review rules and portfolio impact",
+    "Direct rule conflicts",
+    "Answer before deciding",
+    "Decide later",
+  ]) assert.match(workbench,new RegExp(label));
+  assert.match(workbench,/opportunitySignalCopy/);
+  assert.match(workbench,/precheckItemCopy/);
+  assert.match(rules,/last chance/);
+  assert.match(rules,/inside information/);
+  assert.match(rules,/financial report/);
+  assert.match(rules,/invalidation/);
+});
+
+test("keeps the dashboard editor core workflow usable in English",()=>{
+  const editor=read("app/components/dashboard-editor.tsx");
+  assert.match(editor,/useI18n/);
+  for(const label of [
+    "Current workspace",
+    "Module library",
+    "Create from template",
+    "Adjust with one sentence",
+    "Generate preview",
+    "JSON configuration",
+    "Version history",
+    "Layout canvas",
+    "Share read-only",
+    "This workspace has no visible modules",
+    "Module settings",
+    "Layout and appearance",
+  ]) assert.match(editor,new RegExp(label));
+  assert.match(editor,/toLocaleString\(locale\)/);
+});
+
+test("keeps the capability guide and its registry answers usable in English",()=>{
+  const guide=read("app/components/capability-guide.tsx");
+  const ask=read("app/product-guide/ask/route.ts");
+  for(const label of [
+    "Turn market information into a clear next check",
+    "Research-to-decision workflow",
+    "Capability knowledge base",
+    "What works without an API key",
+    "Capability status is not an investment conclusion",
+  ]) assert.match(guide,new RegExp(label));
+  assert.match(ask,/Most relevant:/);
+  assert.match(ask,/This answer uses only the current Capability Registry/);
+  assert.match(ask,/body\.locale==="en"/);
+  assert.match(ask,/englishQueryMap/);
+  assert.match(ask,/item\.category!=="api"/);
 });

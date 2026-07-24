@@ -22,7 +22,8 @@ type AgentSnapshot=UserSnapshot&{workspaces?:Workspace[];activeWorkspaceId?:stri
 
 const AGENT_PLANNER_PROMPT=`你是安心看股 Goal-to-Workspace 规划器。只返回 JSON，不写额外文字。你必须理解目标而不是输出投资建议。不得编造数据、工具或执行状态。输出字段：goal,context,user_stage,data_requirements,analysis_requirements,tool_requirements,ui_requirements,workflow_requirements,automation_requirements,style_requirements,risk_constraints,missing_information,risk_level。risk_level 只能是 low/medium/high/restricted。
 规划原则：只选择完成目标所需的最少工具；用户未明确要求读取“我的持仓/我的组合”时，不得选择 get_portfolio 或 calculate_portfolio_risk；用户说“不要读取/不要使用”时必须遵守。分析问题不得自行添加 ui_requirements，只有用户明确要求修改页面、工作台、模块、布局、主题或流程时才能生成界面修改。缺少信息时最多列出 3 项，并按重要性排序。
-只有用户要求系统代为买卖、自动下单，或要求平台保证收益时才是 restricted。用户表达“想赚钱”“希望短期翻倍”等目标不等于要求平台承诺收益，应标为 high，指出预期不现实，并继续提供学习、风险澄清或纸面模拟路径。`;
+只有用户要求系统代为买卖、自动下单，或要求平台保证收益时才是 restricted。用户表达“想赚钱”“希望短期翻倍”等目标不等于要求平台承诺收益，应标为 high，指出预期不现实，并继续提供学习、风险澄清或纸面模拟路径。
+语言规则：context.locale 为 en 时，goal、analysis_requirements、ui_requirements、workflow_requirements、risk_constraints 和 missing_information 中所有面向用户的文字必须使用英文；否则使用简体中文。工具 ID、模块 ID 和工作流 ID 保持 Registry 中的原始标识。`;
 const now=()=>new Date().toISOString();
 const cleanList=(value:unknown)=>Array.isArray(value)?value.filter((item):item is string=>typeof item==="string").slice(0,20):[];
 const extractJson=(text:string)=>{const match=text.match(/\{[\s\S]*\}/);if(!match)throw new Error("规划模型没有返回 JSON");return JSON.parse(match[0]) as Record<string,unknown>;};
@@ -69,7 +70,7 @@ function validateExtraction(raw:Record<string,unknown>,goal:string,context:Recor
 function toolAllowedForGoal(tool:ToolDefinition,goal:string){
   const normalized=goal.replaceAll(/\s+/g,"");
   const deniesPortfolio=/(不要|无需|不必|禁止)(读取|使用|调用)?(我的)?(真实)?(持仓|组合|账户)/.test(normalized);
-  const explicitlyUsesPortfolio=/(读取|分析|检查|诊断|看看|查看|结合)(我的|当前|已保存)?(持仓|组合|仓位)|我的(持仓|组合)/.test(normalized);
+  const explicitlyUsesPortfolio=/(读取|分析|检查|诊断|看看|查看|结合)(我的|当前|已保存)?(持仓|组合|仓位)|我的(持仓|组合)|(?:read|review|check|assess|use).{0,16}(?:my|saved|current).{0,12}(?:portfolio|holdings?|positions?)|(?:my|saved|current).{0,12}(?:portfolio|holdings?|positions?)/i.test(normalized);
   if(["get_portfolio","calculate_portfolio_risk"].includes(tool.toolId))return !deniesPortfolio&&explicitlyUsesPortfolio;
   if(tool.toolId==="search_capabilities")return /(平台|系统|安心看股).*(能做什么|支持什么|功能|能力|怎么用|如何使用)|(有哪些|支持哪些).*(页面|工具|功能|能力)/.test(goal);
   if(tool.toolId==="search_etf")return /(搜索|查找|找出|有哪些|代码).*(ETF|指数基金)|(ETF|指数基金).*(搜索|查找|代码)/i.test(goal);
@@ -124,8 +125,8 @@ function portfolioRiskResult(snapshot:AgentSnapshot){
 function pretradeResult(goal:string,snapshot:AgentSnapshot){
   const holdings=snapshot.holdings??{};const code=goal.match(/(?<!\d)\d{6}(?!\d)/)?.[0];const selected=code?holdings[code]:undefined;
   const portfolioValue=Object.values(holdings).reduce((sum,item)=>sum+Number(item.value??0),0);
-  const amountMatch=goal.match(/(?:计划|准备|大约|金额|补仓|买入)[^\d]{0,12}([\d,.]+)\s*(万|元)/);
-  const rawAmount=amountMatch?Number(amountMatch[1].replaceAll(",","")):0;const amount=amountMatch?.[2]==="万"?rawAmount*10_000:rawAmount;
+  const amountMatch=goal.match(/(?:计划|准备|大约|金额|补仓|买入|planned|plan(?:ned)?|add(?:ition)?|buy)[^\d]{0,20}(?:CN¥|CNY|RMB|¥)?\s*([\d,.]+)\s*(万|元|k|K)?/i);
+  const rawAmount=amountMatch?Number(amountMatch[1].replaceAll(",","")):0;const amount=amountMatch?.[2]==="万"?rawAmount*10_000:/^k$/i.test(amountMatch?.[2]??"")?rawAmount*1_000:rawAmount;
   const sector=selected?.industry;const currentSectorValue=sector?Object.values(holdings).filter((item)=>item.industry===sector).reduce((sum,item)=>sum+Number(item.value??0),0):0;
   const similarAssets=sector?Object.entries(holdings).filter(([holdingCode,item])=>holdingCode!==code&&item.industry===sector).map(([,item])=>item.name??"未命名资产"):[];
   const recent=goal.match(/(?:近期|最近)[^\d-]{0,8}(-?\d+(?:\.\d+)?)\s*%/);
@@ -200,10 +201,10 @@ export function createToolProposal(goal:string):ToolProposal{return {name:`“${
 
 async function snapshotState(){const result=await readUserSnapshot();if(result.status!=="ready"&&result.status!=="empty")throw new Error("请先登录");const snapshot=(result.status==="ready"?result.snapshot:{}) as AgentSnapshot;const workspaces=snapshot.workspaces?.length?snapshot.workspaces:[createWorkspace("long_term")];const current=workspaces.find((item)=>item.id===snapshot.activeWorkspaceId)??workspaces[0];return {snapshot,workspaces,current};}
 
-export async function createAgentTask(input:{goal:string;route?:string;selected_provider?:string}){
+export async function createAgentTask(input:{goal:string;route?:string;selected_provider?:string;locale?:string}){
   const goal=input.goal.trim().slice(0,4000);if(!goal)throw new Error("请描述你想完成什么");
   const {snapshot,current}=await snapshotState();const providerState=await readProviderState();const provider=providerState.providers.find((item)=>item.providerId===input.selected_provider&&item.enabled&&item.connectionStatus==="available")??providerState.providers.find((item)=>item.isDefault&&item.enabled&&item.connectionStatus==="available")??providerState.providers.find((item)=>item.providerId==="mock")!;
-  const context={route:input.route??"/agent",workspace_id:current.id,workspace_name:current.name,user_preferences:snapshot.exploratoryPreferences??null,portfolio_status:Object.keys(snapshot.holdings??{}).length?"available":"missing"};
+  const context={route:input.route??"/agent",locale:input.locale==="en"?"en":"zh-CN",workspace_id:current.id,workspace_name:current.name,user_preferences:snapshot.exploratoryPreferences??null,portfolio_status:Object.keys(snapshot.holdings??{}).length?"available":"missing"};
   let extraction:GoalExtraction;let plannerMode:AgentTask["planner_mode"]="local_fallback";let actualProvider=provider.providerId;let actualModel=provider.model;
   if(provider.providerId!=="mock")try{const candidates=[provider,...providerState.providers.filter((item)=>item.providerId!==provider.providerId&&item.providerId!=="mock"&&item.enabled&&item.connectionStatus==="available")];const planned=await callAIProviderWithFallback(candidates,[{role:"system",content:AGENT_PLANNER_PROMPT},{role:"user",content:JSON.stringify({goal,context,registries:{tools:TOOL_CATALOG.map((item)=>({tool_id:item.toolId,description:item.description,permission:item.permissionLevel})),modules:MODULE_REGISTRY,workflows:WORKFLOW_REGISTRY}})}],900);extraction=validateExtraction(extractJson(planned.content),goal,context);plannerMode="provider";actualProvider=planned.provider;actualModel=planned.model;}catch{extraction=localExtraction(goal,context);}else extraction=localExtraction(goal,context);
   const deterministicRisk=classifyGoalRisk(goal);
@@ -222,9 +223,19 @@ export async function createAgentTask(input:{goal:string;route?:string;selected_
   // Only show a capability gap when the user explicitly asked to build a new tool.
   const unknownRequestedTools=extraction.tool_requirements.filter((toolId)=>!TOOL_CATALOG.some((item)=>item.toolId===toolId));
   const capabilityGap=requestsNewTool&&(unknownRequestedTools.length>0||!/(ETF|回测|定投|交易前|交易复盘|社交内容|社交热点|指标解释|提醒|观察列表|工作台)/i.test(goal));
-  let matched=[...new Map([...searchTools(extraction),...TOOL_CATALOG.filter((item)=>extraction.tool_requirements.includes(item.toolId))].map((item)=>[item.toolId,item])).values()].filter((item)=>item.permissionLevel!=="restricted"&&toolAllowedForGoal(item,goal));
+  // The model proposes tools, but obvious, allowlisted financial requirements
+  // are also derived deterministically so a variable model response cannot omit
+  // the actual work requested by the user.
+  const deterministicToolIds=[
+    ...(/(?<!\d)[036]\d{5}(?!\d)/.test(goal)?["get_market_data"]:[]),
+    ...(/(?:financial|fundamental|财务|财报|现金流|利润|营收)/i.test(goal)?["get_financial_report"]:[]),
+    ...(/(?:filing|announcement|claim|rumou?r|order|公告|披露|传闻|订单)/i.test(goal)?["get_announcement"]:[]),
+    ...(/(?:pre[- ]?trade|planned|plan(?:ned)?|add(?:ition)?|buy|补仓|买入|交易前)/i.test(goal)?["run_pretrade_check"]:[]),
+    ...(/(?:my|saved|我的|当前).{0,16}(?:portfolio|holding|position|持仓|组合|仓位)/i.test(goal)?["get_portfolio","calculate_portfolio_risk"]:[]),
+  ];
+  let matched=[...new Map([...searchTools(extraction),...TOOL_CATALOG.filter((item)=>extraction.tool_requirements.includes(item.toolId)||deterministicToolIds.includes(item.toolId))].map((item)=>[item.toolId,item])).values()].filter((item)=>item.permissionLevel!=="restricted"&&toolAllowedForGoal(item,goal));
   if(capabilityGap)matched=[];
-  const toolCalls:AgentToolCall[]=[];for(const item of matched.filter((tool)=>tool.permissionLevel==="safe").slice(0,5))toolCalls.push(await executeSafeTool(item,goal,snapshot));
+  const toolCalls:AgentToolCall[]=[];for(const item of matched.filter((tool)=>tool.permissionLevel==="safe").slice(0,6))toolCalls.push(await executeSafeTool(item,goal,snapshot));
   const deniesWorkspace=/(不要|无需|不必|禁止)(调整|修改|创建|改变|使用)?(我的|当前)?(工作台|页面|界面|模块|布局|主题|流程)/.test(goal.replaceAll(/\s+/g,""));
   const explicitWorkspaceRequest=!deniesWorkspace&&/(工作台|页面|界面|模块|布局|主题|颜色|字体|图表|动效|放到首页|创建.{0,8}流程|建立.{0,8}流程|调整.{0,8}流程|隐藏|显示|移动)/.test(goal);
   const needsWorkspace=explicitWorkspaceRequest&&(extraction.ui_requirements.length>0||extraction.style_requirements.length>0||explicitWorkspaceRequest);

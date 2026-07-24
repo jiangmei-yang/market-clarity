@@ -14,7 +14,17 @@ const USER_FULL_NAME_ENCODING_HEADER = "oai-authenticated-user-full-name-encodin
 export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
   const requestHeaders = await headers();
   const email = requestHeaders.get(USER_EMAIL_HEADER);
-  if (!email) return process.env.NODE_ENV !== "production" ? { displayName: "本地测试用户", email: "local@anxin.test", fullName: "本地测试用户" } : null;
+  if (!email) {
+    const classroomDemo = process.env.CLASSROOM_DEMO === "true";
+    if (process.env.NODE_ENV !== "production" || classroomDemo) {
+      return {
+        displayName: classroomDemo ? "课堂演示" : "本地测试用户",
+        email: classroomDemo ? "classroom-demo@market-clarity.local" : "local@anxin.test",
+        fullName: classroomDemo ? "课堂演示" : "本地测试用户",
+      };
+    }
+    return null;
+  }
   const encodedFullName = requestHeaders.get(USER_FULL_NAME_HEADER);
   const fullName = encodedFullName && requestHeaders.get(USER_FULL_NAME_ENCODING_HEADER) === "percent-encoded-utf-8"
     ? safeDecode(encodedFullName)

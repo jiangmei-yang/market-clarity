@@ -24,11 +24,12 @@ test("server-renders the personal investment workbench", async () => {
   assert.match(html, /市场概览/);
   assert.match(html, /打开股票研究/);
   assert.match(html, /今日决策台/);
-  assert.match(html, /研究、核实或检查组合/);
+  assert.match(html, /长期投资工作台/);
+  assert.match(html, /模块顺序、宽度和图表类型来自你的工作台配置/);
   assert.match(html, /研究当前标的/);
   assert.match(html, /核实一条消息/);
   assert.match(html, /我的规则/);
-  assert.match(html, /检查我的组合/);
+  assert.match(html, /调整工作台/);
   assert.doesNotMatch(html, /我的使用记录/);
   assert.match(html, /Market Clarity/);
   assert.match(html, /aria-label="工作台导航"/);
@@ -42,15 +43,17 @@ test("puts recorded personal decisions before the default stock chart", async ()
   const response = await render();
   const html = await response.text();
   const decisionDesk = html.indexOf("今日决策台");
-  const commonActions = html.indexOf("常用操作");
-  const stockWatch = html.indexOf("股票观察");
+  const workspaceView = html.indexOf("当前视图");
+  const matrix = html.indexOf("示例观察列表");
+  const nextStep = html.indexOf("下一步");
   assert.ok(decisionDesk > -1);
-  assert.ok(commonActions > decisionDesk);
-  assert.ok(stockWatch > commonActions);
+  assert.ok(workspaceView > decisionDesk);
+  assert.ok(matrix > workspaceView);
+  assert.ok(nextStep > matrix);
   assert.match(html, /没有提醒不等于没有风险/);
   assert.match(html, /最大持仓/);
-  assert.match(html, /组合观察/);
-  assert.match(html, /示例标的不计入持仓与风险计算/);
+  assert.match(html, /示例观察列表/);
+  assert.match(html, /示例不会进入组合风险计算/);
 });
 
 test("keeps onboarding contextual and navigation grouped by user goal", async () => {
@@ -282,7 +285,7 @@ test("exposes real built-in and local model modes without pretending they are in
   assert.match(catalog,/aiPrivacyMode/);
   assert.match(catalog,/不会伪装成生成式 AI/);
   assert.match(settings,/仅使用本机模型/);
-  assert.match(settings,/生成式 AI 尚未接入/);
+  assert.match(settings,/生成式开源模型尚未部署/);
   assert.match(settings,/平台内置模型/);
   assert.match(assistant,/取消生成/);
   assert.match(privacyRoute,/setAIPrivacyMode/);
@@ -541,7 +544,8 @@ test("keeps the daily workflow and decision loop in the product source", async (
   assert.match(page, /数据和隐私/);
   assert.match(page, /可选大语言模型/);
   assert.match(page, /关键金额仍由确定性代码计算/);
-  assert.match(page, /English Beta 尚未开放/);
+  assert.match(page, /pick\(isEnglish/);
+  assert.match(page, /Search company, code or sector/);
   assert.match(page, /不连接证券账户/);
   assert.match(page, /清空持仓、规则和决策/);
   assert.match(page, /删除我的匿名体验反馈/);

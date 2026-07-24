@@ -72,6 +72,22 @@ test("keeps Agent planning general, auditable, and honest about missing social d
   assert.match(proposalRoute, /requires_human_review:true/);
 });
 
+test("localizes the Agent workspace P0 controls, states, sources, previews, and actions", async () => {
+  const component=await readFile(new URL("../app/components/agent-workspace.tsx",import.meta.url),"utf8");
+  assert.match(component,/import \{ pick, useI18n \} from "@\/app\/i18n"/);
+  assert.match(component,/What would you like to accomplish\?/);
+  assert.match(component,/Generate plan/);
+  assert.match(component,/More information needed/);
+  assert.match(component,/Tool calls/);
+  assert.match(component,/Data sources/);
+  assert.match(component,/Result preview/);
+  assert.match(component,/Workspace change preview/);
+  assert.match(component,/Confirm and apply/);
+  assert.match(component,/Cancel task/);
+  assert.match(component,/Retry failed steps/);
+  assert.match(component,/No task history yet/);
+});
+
 test("pauses for structured input instead of misreporting missing context as failure",async()=>{
   const [agent,registry,component,continueRoute]=await Promise.all([
     readFile(new URL("../app/lib/agent-os.ts",import.meta.url),"utf8"),

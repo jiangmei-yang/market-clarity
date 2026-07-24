@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { deleteUserSnapshot, readUserSnapshot, writeUserSnapshot } from "../../../lib/user-snapshot";
+import { deleteUserSnapshot, mergeAndWriteUserSnapshot, readUserSnapshot } from "../../../lib/user-snapshot";
 
 export async function GET() {
   try {
@@ -15,7 +15,9 @@ export async function PUT(request: Request) {
   try {
     const snapshot = await request.json();
     if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return NextResponse.json({ message: "个人数据格式无效" }, { status: 400 });
-    const result = await writeUserSnapshot(snapshot);
+    // Every client surface owns only part of the snapshot. Merge server-side so
+    // an older page cannot erase newer workspace, Agent or quant state.
+    const result = await mergeAndWriteUserSnapshot(snapshot);
     if (result.status === "unauthorized") return NextResponse.json({ message: "请先登录" }, { status: 401 });
     return NextResponse.json(result);
   } catch (error) {

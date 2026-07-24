@@ -155,13 +155,13 @@ const reviewDueDate = (record: DecisionResult) => {
   due.setDate(due.getDate() + days);
   return due;
 };
-const formatSourceTimestamp = (value?: string) => {
+const formatSourceTimestamp = (value?: string, locale = "zh-CN") => {
   if (!value) return "—";
   const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (dateOnly) return `${dateOnly[1]}年${Number(dateOnly[2])}月${Number(dateOnly[3])}日`;
+  if (dateOnly) return new Date(`${value}T00:00:00+08:00`).toLocaleDateString(locale,{timeZone:"Asia/Shanghai",year:"numeric",month:"short",day:"numeric"});
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  return parsed.toLocaleString(locale, { timeZone: "Asia/Shanghai", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
 };
 const currentAshareSession = () => {
   const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Shanghai", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(new Date());
@@ -171,6 +171,62 @@ const currentAshareSession = () => {
   if ((minute >= 570 && minute < 690) || (minute >= 780 && minute < 900)) return "交易中";
   if (minute >= 690 && minute < 780) return "午间休市";
   return "已收盘";
+};
+
+const tradeActionLabel = (value: TradeAction, isEnglish: boolean) => isEnglish ? ({
+  "买入": "Buy",
+  "补仓": "Add",
+  "卖出": "Sell",
+  "继续观察": "Keep watching",
+}[value] ?? value) : value;
+
+const decisionResultLabel = (value: DecisionResult["result"], isEnglish: boolean) => isEnglish ? ({
+  "已修改": "Modified",
+  "维持计划": "Kept plan",
+  "已延迟": "Deferred",
+}[value] ?? value) : value;
+
+const horizonLabel = (value: string | undefined, isEnglish: boolean) => isEnglish ? ({
+  "1周": "1 week",
+  "1个月": "1 month",
+  "3个月": "3 months",
+}[value ?? ""] ?? value ?? "Not set") : value ?? "未设置";
+
+const canonicalReviewText = (value: string, isEnglish: boolean) => {
+  if (!isEnglish) return value;
+  const exact: Record<string, string> = {
+    "尚未写清操作理由": "The reason for the planned action is not clear",
+    "理由拆解尚未确认": "The reason breakdown has not been confirmed",
+    "理由中的金额与计划金额不一致": "The amount in the reason does not match the plan",
+    "单股仓位超过个人边界": "Single-position exposure exceeds your rule",
+    "单笔金额超过提醒值": "The planned amount exceeds your alert threshold",
+    "外部信息尚未核实": "External information has not been verified",
+    "外部说法找到相关正式披露，仍需阅读原文": "A related formal disclosure was found; read the original source",
+    "外部说法未找到相关正式披露": "No related formal disclosure was found",
+    "尚未填写判断失效条件": "No invalidation condition has been recorded",
+    "加入成本后，样本外优势未保持": "The out-of-sample advantage did not persist after costs",
+    "参数轻微变化后结果方向反转": "A small parameter change reversed the result",
+    "历史正收益主要集中在少数时期或股票": "Historical gains were concentrated in a few periods or securities",
+    "原计划未写清操作理由": "The original plan did not state a clear reason",
+    "原计划未填写判断失效条件": "The original plan did not state an invalidation condition",
+    "理由包含待核实外部信息": "The reason contains unverified external information",
+  };
+  if (exact[value]) return exact[value];
+  return value
+    .replace(/^历史最大回撤 ([\d.]+)% 超过个人边界 ([\d.]+)%$/, "Historical maximum drawdown $1% exceeds your $2% limit")
+    .replace(/^计划观察 (.+)，但历史检验使用 (\d+) 个交易日$/, "Planned horizon: $1; historical test horizon: $2 trading days")
+    .replace(/^样本外仅 (\d+) 个样本，低于个人要求 (\d+)$/, "Only $1 out-of-sample observations, below your minimum of $2");
+};
+
+const evidenceStatusLabel = (value: string | undefined, isEnglish: boolean) => {
+  if (!value) return value;
+  if (!isEnglish) return value;
+  return ({
+    "找到相关正式披露": "Related formal disclosure found",
+    "未找到相关正式披露": "No related formal disclosure found",
+    "证据不足": "Insufficient evidence",
+    "尚未核实": "Not verified",
+  } as Record<string, string>)[value] ?? value;
 };
 
 const researchProfiles: Record<string, { thesis: string; invalidation: string; confirmed: string; uncertain: string; tradeoff: string; gap: string; suggestedReason: string; suggestedAmount: number; rumor: string; inference: string }> = {
@@ -196,7 +252,7 @@ function PriceChange({ value }: { value: number }) {
 }
 
 function AppHeader({ view, stockCode, freshnessOverride, userName, syncStatus, onNewDecision, onSelectStock, onDataStatus }: { view: View; stockCode: string; freshnessOverride?: { stockCode: string; value: HeaderFreshness }; userName: string; syncStatus: CloudSyncStatus; onNewDecision: () => void; onSelectStock: (stock: Stock) => void; onDataStatus: () => void }) {
-  const { isEnglish } = useI18n();
+  const { isEnglish, locale } = useI18n();
   const titles: Record<View, [string, string]> = { desk: ["研究概览", "Research overview"], research: ["股票研究", "Stock research"], newDecision: ["新建决策", "New review"], decision: ["决策验证", "Decision review"], decisionResult: ["审查记录", "Review record"], history: ["历史记录", "Review history"], portfolio: ["我的持仓", "My portfolio"], rules: ["我的规则", "My rules"], privacy: ["数据和隐私", "Data & privacy"] };
   const [query, setQuery] = useState("");
   const [remoteMatches, setRemoteMatches] = useState<StockSearchItem[]>([]);
@@ -225,12 +281,12 @@ function AppHeader({ view, stockCode, freshnessOverride, userName, syncStatus, o
       const evidenceReady = Boolean(evidence?.ok && evidenceCount > 0);
       setFreshness({
         state: quoteReady && evidenceReady ? "ready" : "partial",
-        quote: quoteReady ? `${pick(isEnglish, "行情", "Market")} ${formatSourceTimestamp(quote?.body.quote?.update_time || quote?.body.fetchedAt)}` : pick(isEnglish, "行情暂不可用", "Market data unavailable"),
-        evidence: evidenceReady ? `${pick(isEnglish, "公告", "Filings")} ${formatSourceTimestamp(evidence?.body.feed?.updated_at)} · ${evidenceCount}` : evidence?.ok ? pick(isEnglish, "公告暂未返回资料", "No filings returned") : pick(isEnglish, "公告暂不可用", "Filings unavailable"),
+        quote: quoteReady ? `${pick(isEnglish, "行情", "Market")} ${formatSourceTimestamp(quote?.body.quote?.update_time || quote?.body.fetchedAt,locale)}` : pick(isEnglish, "行情暂不可用", "Market data unavailable"),
+        evidence: evidenceReady ? `${pick(isEnglish, "公告", "Filings")} ${formatSourceTimestamp(evidence?.body.feed?.updated_at,locale)} · ${evidenceCount}` : evidence?.ok ? pick(isEnglish, "公告暂未返回资料", "No filings returned") : pick(isEnglish, "公告暂不可用", "Filings unavailable"),
       });
     });
     return () => { window.clearTimeout(timeout); controller.abort(); };
-  }, [stockCode, isEnglish]);
+  }, [stockCode, isEnglish, locale]);
   const visibleFreshness = freshnessOverride?.stockCode === stockCode ? freshnessOverride.value : freshness;
   const localMatches = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -1060,7 +1116,11 @@ function parseRuleDescription(text: string, current: UserRules): UserRules {
 }
 
 function RulesView({ rules, onSave, onBack }: { rules: UserRules; onSave: (rules: UserRules) => void; onBack: () => void }) {
-  const describeRules = (value: UserRules) => `我大约拿${value.investableCapital / 10000}万元投资股票，单只股票最多${value.maxSingleStockValue / 10000}万元。单笔超过${value.singleAmountAlert / 10000}万元时提醒我，亏损后希望隔${value.coolingHours >= 24 && value.coolingHours % 24 === 0 ? `${value.coolingHours / 24}天` : `${value.coolingHours}小时`}再看。${value.requireInvalidation ? "每笔交易都要写什么情况说明判断可能错了。" : "判断失效条件可以稍后补充。"}`;
+  const { isEnglish } = useI18n();
+  const t = (zh: string, en: string) => pick(isEnglish, zh, en);
+  const describeRules = (value: UserRules) => isEnglish
+    ? `I use about ¥${value.investableCapital.toLocaleString()} as reference capital and want any single stock capped at ¥${value.maxSingleStockValue.toLocaleString()}. Remind me when one plan exceeds ¥${value.singleAmountAlert.toLocaleString()}, and wait ${value.coolingHours} hours after a loss before reviewing again. ${value.requireInvalidation ? "Every plan should include an invalidation condition." : "The invalidation condition can be added later."}`
+    : `我大约拿${value.investableCapital / 10000}万元投资股票，单只股票最多${value.maxSingleStockValue / 10000}万元。单笔超过${value.singleAmountAlert / 10000}万元时提醒我，亏损后希望隔${value.coolingHours >= 24 && value.coolingHours % 24 === 0 ? `${value.coolingHours / 24}天` : `${value.coolingHours}小时`}再看。${value.requireInvalidation ? "每笔交易都要写什么情况说明判断可能错了。" : "判断失效条件可以稍后补充。"}`;
   const [description, setDescription] = useState(() => describeRules(rules));
   const [draft, setDraft] = useState(rules);
   const [parsed, setParsed] = useState(true);
@@ -1073,30 +1133,30 @@ function RulesView({ rules, onSave, onBack }: { rules: UserRules; onSave: (rules
     <main className="rules-page view-enter" id="main-content">
       <section className="workspace rules-workspace">
         <header className="rules-header">
-          <div><Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft data-icon="inline-start" />返回</Button><h1>我的提醒规则</h1><p>这些数字只用于检查你的计划是否碰到自己设定的边界，不是仓位建议。</p></div>
-          <span className="data-provenance"><Database /><b>保存在本设备</b><small>可随时重新修改</small></span>
+          <div><Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft data-icon="inline-start" />{t("返回", "Back")}</Button><h1>{t("我的提醒规则", "My review rules")}</h1><p>{t("这些数字只用于检查你的计划是否碰到自己设定的边界，不是仓位建议。", "These values check your plan against boundaries you set. They are not position-size advice.")}</p></div>
+          <span className="data-provenance"><Database /><b>{t("保存在本设备", "Saved on this device")}</b><small>{t("可随时重新修改", "Editable at any time")}</small></span>
         </header>
         <div className="rules-grid">
           <section className="rule-description-panel">
-            <div className="rule-step-heading"><span>1</span><div><h2>用自己的话描述</h2><p>不需要理解专业术语，写清大约资金、单只股票上限和希望何时被提醒。</p></div></div>
-            <Textarea aria-label="自然语言规则描述" value={description} onChange={(event) => { setDescription(event.target.value); setParsed(false); }} rows={7} />
-            <div className="rule-template-row"><span>快速开始</span><Button variant="outline" size="sm" onClick={() => applyTemplate(STRONG_RULES)}>强提醒模式</Button><Button variant="outline" size="sm" onClick={() => applyTemplate(DEFAULT_RULES)}>标准提醒模式</Button></div>
-            <Button size="lg" onClick={() => { setDraft(parseRuleDescription(description, draft)); setParsed(true); }}>整理成规则<ArrowRight data-icon="inline-end" /></Button>
-            <div className="rule-privacy-note"><ShieldCheck /><p><strong>不会替你决定合适比例</strong><span>系统只提取你写出的数字；保存前必须由你确认。</span></p></div>
+            <div className="rule-step-heading"><span>1</span><div><h2>{t("用自己的话描述", "Describe your boundaries")}</h2><p>{t("不需要理解专业术语，写清大约资金、单只股票上限和希望何时被提醒。", "State your reference capital, single-stock limit, and when you want a reminder—no finance jargon required.")}</p></div></div>
+            <Textarea aria-label={t("自然语言规则描述", "Natural-language rule description")} value={description} onChange={(event) => { setDescription(event.target.value); setParsed(false); }} rows={7} />
+            <div className="rule-template-row"><span>{t("快速开始", "Quick start")}</span><Button variant="outline" size="sm" onClick={() => applyTemplate(STRONG_RULES)}>{t("强提醒模式", "Stronger reminders")}</Button><Button variant="outline" size="sm" onClick={() => applyTemplate(DEFAULT_RULES)}>{t("标准提醒模式", "Standard reminders")}</Button></div>
+            <Button size="lg" onClick={() => { setDraft(parseRuleDescription(description, draft)); setParsed(true); }}>{t("整理成规则", "Extract rules")}<ArrowRight data-icon="inline-end" /></Button>
+            <div className="rule-privacy-note"><ShieldCheck /><p><strong>{t("不会替你决定合适比例", "You remain in control of the limits")}</strong><span>{t("系统只提取你写出的数字；保存前必须由你确认。", "The system only extracts your values. You must confirm before saving.")}</span></p></div>
           </section>
           <section className="rule-confirm-panel">
-            <div className="rule-step-heading"><span>2</span><div><h2>确认识别结果</h2><p>{parsed ? "请逐项检查，必要时直接修改数字。" : "先整理上面的描述，或选择一个提醒模板。"}</p></div></div>
+            <div className="rule-step-heading"><span>2</span><div><h2>{t("确认识别结果", "Confirm extracted rules")}</h2><p>{parsed ? t("请逐项检查，必要时直接修改数字。", "Check every value and edit any mistake.") : t("先整理上面的描述，或选择一个提醒模板。", "Extract the description above or choose a template.")}</p></div></div>
             <div className="rule-fields">
-              <label><span>用于投资的记录资金</span><div className="money-input"><span>¥</span><Input aria-label="用于投资的记录资金" type="number" min="0" step="10000" value={draft.investableCapital} onChange={(event) => updateNumber("investableCapital", Number(event.target.value))} /></div><small>只用于计算仓位比例</small></label>
-              <label><span>单只股票金额上限</span><div className="money-input"><span>¥</span><Input aria-label="单只股票金额上限" type="number" min="0" step="1000" value={draft.maxSingleStockValue} onChange={(event) => updateNumber("maxSingleStockValue", Number(event.target.value))} /></div><small>超过时提醒重新检查</small></label>
-              <label><span>单股占比上限</span><div className="percent-input"><Input aria-label="单股占比上限" type="number" min="0" max="100" step="1" value={draft.maxSingleStockRatio} onChange={(event) => updateNumber("maxSingleStockRatio", Number(event.target.value))} /><span>%</span></div><small>金额和比例以更严格的一项为准</small></label>
-              <label><span>单笔金额提醒</span><div className="money-input"><span>¥</span><Input aria-label="单笔金额提醒" type="number" min="0" step="1000" value={draft.singleAmountAlert} onChange={(event) => updateNumber("singleAmountAlert", Number(event.target.value))} /></div><small>达到该金额时额外显示提醒</small></label>
-              <label><span>亏损后冷静时间</span><div className="percent-input"><Input aria-label="亏损后冷静时间" type="number" min="0" step="1" value={draft.coolingHours} onChange={(event) => updateNumber("coolingHours", Number(event.target.value))} /><span>小时</span></div><small>记录提醒，不阻止用户操作</small></label>
-              <label className="rule-toggle"><input type="checkbox" checked={draft.requireInvalidation} onChange={(event) => { setDraft((current) => ({ ...current, requireInvalidation: event.target.checked })); setParsed(true); }} /><span><b>每笔计划填写判断失效条件</b><small>帮助以后判断依据是否已经变化</small></span></label>
+              <label><span>{t("用于投资的记录资金", "Reference capital")}</span><div className="money-input"><span>¥</span><Input aria-label={t("用于投资的记录资金", "Reference capital")} type="number" min="0" step="10000" value={draft.investableCapital} onChange={(event) => updateNumber("investableCapital", Number(event.target.value))} /></div><small>{t("只用于计算仓位比例", "Used only for position-weight calculations")}</small></label>
+              <label><span>{t("单只股票金额上限", "Single-stock value limit")}</span><div className="money-input"><span>¥</span><Input aria-label={t("单只股票金额上限", "Single-stock value limit")} type="number" min="0" step="1000" value={draft.maxSingleStockValue} onChange={(event) => updateNumber("maxSingleStockValue", Number(event.target.value))} /></div><small>{t("超过时提醒重新检查", "Prompts a review when exceeded")}</small></label>
+              <label><span>{t("单股占比上限", "Single-stock weight limit")}</span><div className="percent-input"><Input aria-label={t("单股占比上限", "Single-stock weight limit")} type="number" min="0" max="100" step="1" value={draft.maxSingleStockRatio} onChange={(event) => updateNumber("maxSingleStockRatio", Number(event.target.value))} /><span>%</span></div><small>{t("金额和比例以更严格的一项为准", "The stricter value or percentage limit applies")}</small></label>
+              <label><span>{t("单笔金额提醒", "Single-plan amount alert")}</span><div className="money-input"><span>¥</span><Input aria-label={t("单笔金额提醒", "Single-plan amount alert")} type="number" min="0" step="1000" value={draft.singleAmountAlert} onChange={(event) => updateNumber("singleAmountAlert", Number(event.target.value))} /></div><small>{t("达到该金额时额外显示提醒", "Shows an additional reminder at this amount")}</small></label>
+              <label><span>{t("亏损后冷静时间", "Cooling period after a loss")}</span><div className="percent-input"><Input aria-label={t("亏损后冷静时间", "Cooling period after a loss")} type="number" min="0" step="1" value={draft.coolingHours} onChange={(event) => updateNumber("coolingHours", Number(event.target.value))} /><span>{t("小时", "hours")}</span></div><small>{t("记录提醒，不阻止用户操作", "A reminder only; it does not block actions")}</small></label>
+              <label className="rule-toggle"><input type="checkbox" checked={draft.requireInvalidation} onChange={(event) => { setDraft((current) => ({ ...current, requireInvalidation: event.target.checked })); setParsed(true); }} /><span><b>{t("每笔计划填写判断失效条件", "Require an invalidation condition")}</b><small>{t("帮助以后判断依据是否已经变化", "Helps you revisit whether the original thesis changed")}</small></span></label>
             </div>
-            <section className="quant-discipline-fields"><div><strong>历史检验纪律（可选）</strong><span>只用于把定量结果转成复核问题，不会自动阻止或执行交易。</span></div><div><label><span>最大允许历史回撤</span><div className="percent-input"><Input type="number" min="0" max="100" value={draft.maxHistoricalDrawdown} onChange={(event) => updateNumber("maxHistoricalDrawdown", Number(event.target.value))} /><span>%</span></div></label><label><span>单个规则最大资金占比</span><div className="percent-input"><Input type="number" min="0" max="100" value={draft.maxRuleCapitalRatio} onChange={(event) => updateNumber("maxRuleCapitalRatio", Number(event.target.value))} /><span>%</span></div></label><label><span>最低样本外样本数</span><Input type="number" min="5" value={draft.minOutOfSampleSamples} onChange={(event) => updateNumber("minOutOfSampleSamples", Number(event.target.value))} /></label><label><span>最大调仓频率</span><select value={draft.maxRebalanceFrequency} onChange={(event) => { setDraft((current) => ({ ...current, maxRebalanceFrequency: event.target.value as UserRules["maxRebalanceFrequency"] })); setParsed(true); }}><option>每周</option><option>每月</option><option>每季</option></select></label><label><span>连续不利暂停阈值</span><div className="percent-input"><Input type="number" min="1" value={draft.adversePeriodPause} onChange={(event) => updateNumber("adversePeriodPause", Number(event.target.value))} /><span>次</span></div></label><label><span>最短模拟观察</span><div className="percent-input"><Input type="number" min="0" value={draft.minimumPaperDays} onChange={(event) => updateNumber("minimumPaperDays", Number(event.target.value))} /><span>天</span></div></label><label className="rule-toggle"><input type="checkbox" checked={draft.requirePaperObservation} onChange={(event) => { setDraft((current) => ({ ...current, requirePaperObservation: event.target.checked })); setParsed(true); }} /><span><b>先完成模拟观察</b><small>真实采用规则前先保留观察记录</small></span></label></div></section>
-            <div className="rule-confirm-summary"><span>实际生效边界</span><strong>单股不超过 ¥{effectiveLimit.toLocaleString()}</strong><small>金额上限 ¥{draft.maxSingleStockValue.toLocaleString()} 与比例上限 {draft.maxSingleStockRatio}% 中取更严格的一项</small><div><span>例如计划后单股达到 ¥{Math.min(draft.investableCapital, effectiveLimit + 10000).toLocaleString()}</span><b>{effectiveLimit + 10000 > effectiveLimit ? `会提示超出 ¥${Math.min(10000, Math.max(0, draft.investableCapital - effectiveLimit)).toLocaleString()}` : "不会触发仓位提醒"}</b></div></div>
-            <Button size="lg" disabled={!parsed || !validRules} onClick={() => onSave(draft)}>确认并使用这些规则<Check data-icon="inline-end" /></Button>
+            <section className="quant-discipline-fields"><div><strong>{t("历史检验纪律（可选）", "Backtest discipline (optional)")}</strong><span>{t("只用于把定量结果转成复核问题，不会自动阻止或执行交易。", "Turns quantitative results into review questions. It never blocks or executes a trade.")}</span></div><div><label><span>{t("最大允许历史回撤", "Maximum historical drawdown")}</span><div className="percent-input"><Input type="number" min="0" max="100" value={draft.maxHistoricalDrawdown} onChange={(event) => updateNumber("maxHistoricalDrawdown", Number(event.target.value))} /><span>%</span></div></label><label><span>{t("单个规则最大资金占比", "Maximum capital per rule")}</span><div className="percent-input"><Input type="number" min="0" max="100" value={draft.maxRuleCapitalRatio} onChange={(event) => updateNumber("maxRuleCapitalRatio", Number(event.target.value))} /><span>%</span></div></label><label><span>{t("最低样本外样本数", "Minimum out-of-sample observations")}</span><Input type="number" min="5" value={draft.minOutOfSampleSamples} onChange={(event) => updateNumber("minOutOfSampleSamples", Number(event.target.value))} /></label><label><span>{t("最大调仓频率", "Maximum rebalance frequency")}</span><select value={draft.maxRebalanceFrequency} onChange={(event) => { setDraft((current) => ({ ...current, maxRebalanceFrequency: event.target.value as UserRules["maxRebalanceFrequency"] })); setParsed(true); }}><option value="每周">{t("每周", "Weekly")}</option><option value="每月">{t("每月", "Monthly")}</option><option value="每季">{t("每季", "Quarterly")}</option></select></label><label><span>{t("连续不利暂停阈值", "Adverse-period pause threshold")}</span><div className="percent-input"><Input type="number" min="1" value={draft.adversePeriodPause} onChange={(event) => updateNumber("adversePeriodPause", Number(event.target.value))} /><span>{t("次", "times")}</span></div></label><label><span>{t("最短模拟观察", "Minimum paper-observation period")}</span><div className="percent-input"><Input type="number" min="0" value={draft.minimumPaperDays} onChange={(event) => updateNumber("minimumPaperDays", Number(event.target.value))} /><span>{t("天", "days")}</span></div></label><label className="rule-toggle"><input type="checkbox" checked={draft.requirePaperObservation} onChange={(event) => { setDraft((current) => ({ ...current, requirePaperObservation: event.target.checked })); setParsed(true); }} /><span><b>{t("先完成模拟观察", "Require paper observation first")}</b><small>{t("真实采用规则前先保留观察记录", "Keep an observation record before adopting the rule")}</small></span></label></div></section>
+            <div className="rule-confirm-summary"><span>{t("实际生效边界", "Effective boundary")}</span><strong>{t(`单股不超过 ¥${effectiveLimit.toLocaleString()}`, `No single stock above ¥${effectiveLimit.toLocaleString()}`)}</strong><small>{t(`金额上限 ¥${draft.maxSingleStockValue.toLocaleString()} 与比例上限 ${draft.maxSingleStockRatio}% 中取更严格的一项`, `The stricter of ¥${draft.maxSingleStockValue.toLocaleString()} and ${draft.maxSingleStockRatio}% applies`)}</small><div><span>{t(`例如计划后单股达到 ¥${Math.min(draft.investableCapital, effectiveLimit + 10000).toLocaleString()}`, `Example post-plan value: ¥${Math.min(draft.investableCapital, effectiveLimit + 10000).toLocaleString()}`)}</span><b>{effectiveLimit + 10000 > effectiveLimit ? t(`会提示超出 ¥${Math.min(10000, Math.max(0, draft.investableCapital - effectiveLimit)).toLocaleString()}`, `Would flag an excess of ¥${Math.min(10000, Math.max(0, draft.investableCapital - effectiveLimit)).toLocaleString()}`) : t("不会触发仓位提醒", "No position alert")}</b></div></div>
+            <Button size="lg" disabled={!parsed || !validRules} onClick={() => onSave(draft)}>{t("确认并使用这些规则", "Confirm and use these rules")}<Check data-icon="inline-end" /></Button>
           </section>
         </div>
       </section>
@@ -1105,10 +1165,33 @@ function RulesView({ rules, onSave, onBack }: { rules: UserRules; onSave: (rules
 }
 
 function PrivacyView({ recordCount, holdingCount, syncStatus, onClear, onClearStudy, onBack }: { recordCount: number; holdingCount: number; syncStatus: CloudSyncStatus; onClear: () => void; onClearStudy: () => Promise<boolean>; onBack: () => void }) {
+  const { isEnglish } = useI18n();
+  const t = (zh: string, en: string) => pick(isEnglish, zh, en);
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmStudyClear, setConfirmStudyClear] = useState(false);
   const [studyClearStatus, setStudyClearStatus] = useState("");
-  return <main className="privacy-page view-enter" id="main-content"><section className="workspace privacy-workspace"><header className="privacy-header"><div><Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft data-icon="inline-start" />返回</Button><h1>数据和隐私</h1><p>这里说明当前桌面版实际保存什么、向哪些公开服务发出请求，以及如何删除数据。</p></div><span><LockKeyhole /><b>不连接证券账户</b><small>不保存账户密码或交易权限</small></span></header><section className="privacy-local-summary"><div><span>决策记录</span><strong>{recordCount}</strong><small>{syncStatus === "synced" ? "已同步到个人云端空间" : "云端不可用时保存在本设备"}</small></div><div><span>持仓条目</span><strong>{holdingCount}</strong><small>手动填写或 CSV 导入</small></div><div><span>自动交易权限</span><strong>无</strong><small>不会连接券商或执行下单</small></div></section><div className="privacy-grid"><section><SectionHeader title="哪些数据会保存" meta="仅为完成决策流程" /><div className="privacy-data-list"><article><strong>个人提醒规则</strong><span>记录资金、单股边界、单笔提醒、冷静时间与是否填写失效条件</span><Badge variant="outline">个人云端 + 本机备份</Badge></article><article><strong>手动持仓</strong><span>股票代码、名称与用户填写的金额；不需要成本价或证券账户</span><Badge variant="outline">个人云端 + 本机备份</Badge></article><article><strong>决策记录</strong><span>计划金额、理由拆解、失效条件、规则快照与当时取得的证据摘要</span><Badge variant="outline">个人云端 + 本机备份</Badge></article><article><strong>匿名体验反馈</strong><span>匿名编号、用户类型、流程选择、风险复述与明确同意时间</span><Badge variant="outline">产品体验数据库</Badge></article><article><strong>登录标识</strong><span>服务器只保存由 ChatGPT 登录邮箱生成的不可逆散列键，不在记录中保存邮箱</span><Badge variant="outline">服务器</Badge></article><article><strong>ETF / 交易复盘输入</strong><span>在当前会话中计算；刷新页面后不会作为个人账户数据保存</span><Badge variant="outline">当前会话</Badge></article></div></section><section><SectionHeader title="会访问哪些第三方服务" meta="公开资料与可选 AI" /><div className="privacy-service-list"><article><div><strong>腾讯证券公开行情</strong><span>历史价格与成交量</span></div><small>发送：股票代码</small></article><article><div><strong>巨潮资讯、东方财富公告</strong><span>法定披露与公告聚合</span></div><small>发送：股票代码与检索词</small></article><article><div><strong>新浪财经公开财务报表</strong><span>资产负债表、利润表与现金流量表</span></div><small>发送：股票代码</small></article><article><div><strong>东方财富、天天基金公开数据</strong><span>ETF 搜索与定期披露持仓</span></div><small>发送：ETF 代码或名称</small></article><article><div><strong>可选大语言模型</strong><span>仅在服务器配置密钥时整理理由和有限检索资料；未配置时使用本地规则</span></div><small>可能发送：理由、资料标题、摘要、来源；关键金额仍由确定性代码计算</small></article></div></section></div><section className="privacy-boundaries"><div><ShieldCheck /><span><strong>产品边界</strong><small>不推荐必买或必卖，不预测保证收益，不自动交易。AI 或规则生成的文字只用于信息整理与风险复核，不构成投资建议。</small></span></div><div><TriangleAlert /><span><strong>不要输入</strong><small>证券账户密码、身份证号、银行卡号、短信验证码或任何可以授权交易的信息。</small></span></div><div><CircleHelp /><span><strong>语言版本</strong><small>当前真实用户测试只开放完整中文界面。English Beta 尚未开放，避免半译状态影响金融信息理解。</small></span></div></section><footer className="privacy-controls"><div><strong>持仓、规则和决策记录</strong><span>清空会同时删除个人云端记录和本机备份；操作前可在“历史记录”和“我的持仓”分别导出。</span></div>{confirmClear ? <div className="privacy-clear-confirm"><span>此操作无法撤销。确认清空持仓、规则和决策记录？</span><Button variant="outline" onClick={() => setConfirmClear(false)}>取消</Button><Button onClick={onClear}>确认清空</Button></div> : <Button variant="outline" onClick={() => setConfirmClear(true)}>清空持仓、规则和决策</Button>}</footer><footer className="privacy-controls"><div><strong>匿名体验反馈</strong><span>删除本账号提交的体验会话和反馈；不会影响持仓、规则或决策记录。</span>{studyClearStatus&&<small role="status">{studyClearStatus}</small>}</div>{confirmStudyClear ? <div className="privacy-clear-confirm"><span>确认删除本人提交的全部匿名体验反馈？</span><Button variant="outline" onClick={() => setConfirmStudyClear(false)}>取消</Button><Button onClick={async()=>{const removed=await onClearStudy();setStudyClearStatus(removed?"匿名体验反馈已删除":"删除失败，请稍后重试");if(removed)setConfirmStudyClear(false);}}>确认删除</Button></div> : <Button variant="outline" onClick={() => setConfirmStudyClear(true)}>删除我的匿名体验反馈</Button>}</footer></section></main>;
+  const storageBadge = t("个人云端 + 本机备份", "Personal cloud + device backup");
+  return <main className="privacy-page view-enter" id="main-content"><section className="workspace privacy-workspace">
+    <header className="privacy-header"><div><Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft data-icon="inline-start" />{t("返回", "Back")}</Button><h1>{t("数据和隐私", "Data & privacy")}</h1><p>{t("这里说明当前桌面版实际保存什么、向哪些公开服务发出请求，以及如何删除数据。", "See what this web app stores, which public services it contacts, and how to delete your data.")}</p></div><span><LockKeyhole /><b>{t("不连接证券账户", "No brokerage connection")}</b><small>{t("不保存账户密码或交易权限", "No account password or trading authority stored")}</small></span></header>
+    <section className="privacy-local-summary"><div><span>{t("决策记录", "Decision reviews")}</span><strong>{recordCount}</strong><small>{syncStatus === "synced" ? t("已同步到个人云端空间", "Synced to your private cloud space") : t("云端不可用时保存在本设备", "Saved on this device when cloud sync is unavailable")}</small></div><div><span>{t("持仓条目", "Portfolio entries")}</span><strong>{holdingCount}</strong><small>{t("手动填写或 CSV 导入", "Entered manually or imported from CSV")}</small></div><div><span>{t("自动交易权限", "Automated trading access")}</span><strong>{t("无", "None")}</strong><small>{t("不会连接券商或执行下单", "No brokerage connection or order execution")}</small></div></section>
+    <div className="privacy-grid"><section><SectionHeader title={t("哪些数据会保存", "What is stored")} meta={t("仅为完成决策流程", "Only to support your workflow")} /><div className="privacy-data-list">
+      <article><strong>{t("个人提醒规则", "Personal review rules")}</strong><span>{t("记录资金、单股边界、单笔提醒、冷静时间与是否填写失效条件", "Reference capital, position limits, amount alerts, cooling period, and invalidation requirements")}</span><Badge variant="outline">{storageBadge}</Badge></article>
+      <article><strong>{t("手动持仓", "Manual portfolio")}</strong><span>{t("股票代码、名称与用户填写的金额；不需要成本价或证券账户", "Security code, name, and entered value; no cost basis or brokerage account required")}</span><Badge variant="outline">{storageBadge}</Badge></article>
+      <article><strong>{t("决策记录", "Decision reviews")}</strong><span>{t("计划金额、理由拆解、失效条件、规则快照与当时取得的证据摘要", "Planned amount, reasoning breakdown, invalidation condition, rule snapshot, and evidence summary")}</span><Badge variant="outline">{storageBadge}</Badge></article>
+      <article><strong>{t("匿名体验反馈", "Anonymous research feedback")}</strong><span>{t("匿名编号、用户类型、流程选择、风险复述与明确同意时间", "Anonymous ID, participant type, workflow choice, risk recall, and consent timestamp")}</span><Badge variant="outline">{t("产品体验数据库", "Product research database")}</Badge></article>
+      <article><strong>{t("登录标识", "Login identifier")}</strong><span>{t("服务器只保存由 ChatGPT 登录邮箱生成的不可逆散列键，不在记录中保存邮箱", "The server stores only an irreversible key derived from your ChatGPT login email, not the email itself")}</span><Badge variant="outline">{t("服务器", "Server")}</Badge></article>
+      <article><strong>{t("ETF / 交易复盘输入", "ETF / trade-review input")}</strong><span>{t("在当前会话中计算；刷新页面后不会作为个人账户数据保存", "Processed in the current session and not retained as account data after refresh")}</span><Badge variant="outline">{t("当前会话", "Current session")}</Badge></article>
+    </div></section><section><SectionHeader title={t("会访问哪些第三方服务", "Third-party services")} meta={t("公开资料与可选 AI", "Public data and optional AI")} /><div className="privacy-service-list">
+      <article><div><strong>{t("腾讯证券公开行情", "Tencent Securities public market data")}</strong><span>{t("历史价格与成交量", "Historical prices and volume")}</span></div><small>{t("发送：股票代码", "Sent: security code")}</small></article>
+      <article><div><strong>{t("巨潮资讯、东方财富公告", "CNInfo and Eastmoney filings")}</strong><span>{t("法定披露与公告聚合", "Regulatory disclosures and filing aggregation")}</span></div><small>{t("发送：股票代码与检索词", "Sent: security code and query")}</small></article>
+      <article><div><strong>{t("新浪财经公开财务报表", "Sina Finance public statements")}</strong><span>{t("资产负债表、利润表与现金流量表", "Balance sheet, income statement, and cash-flow statement")}</span></div><small>{t("发送：股票代码", "Sent: security code")}</small></article>
+      <article><div><strong>{t("东方财富、天天基金公开数据", "Eastmoney and Fund.eastmoney public data")}</strong><span>{t("ETF 搜索与定期披露持仓", "ETF search and disclosed holdings")}</span></div><small>{t("发送：ETF 代码或名称", "Sent: ETF code or name")}</small></article>
+      <article><div><strong>{t("可选大语言模型", "Optional language model")}</strong><span>{t("仅在服务器配置密钥时整理理由和有限检索资料；未配置时使用本地规则", "Used only when a server-side key is configured; otherwise local deterministic rules remain available")}</span></div><small>{t("可能发送：理由、资料标题、摘要、来源；关键金额仍由确定性代码计算", "May send reasoning, titles, summaries, and sources; financial calculations remain deterministic")}</small></article>
+    </div></section></div>
+    <section className="privacy-boundaries"><div><ShieldCheck /><span><strong>{t("产品边界", "Product boundary")}</strong><small>{t("不推荐必买或必卖，不预测保证收益，不自动交易。AI 或规则生成的文字只用于信息整理与风险复核，不构成投资建议。", "No buy/sell commands, guaranteed-return forecasts, or automated trading. AI and rule output is for information review, not investment advice.")}</small></span></div><div><TriangleAlert /><span><strong>{t("不要输入", "Do not enter")}</strong><small>{t("证券账户密码、身份证号、银行卡号、短信验证码或任何可以授权交易的信息。", "Brokerage passwords, identity numbers, bank-card details, SMS codes, or anything that can authorize trading.")}</small></span></div><div><CircleHelp /><span><strong>{t("语言版本", "Language support")}</strong><small>{t("中文和英文界面使用相同的金融数据与安全边界。用户输入和法定披露原文不会被自动改写。", "Chinese and English use the same data and safety controls. User-entered text and original regulatory filings are not automatically rewritten.")}</small></span></div></section>
+    <footer className="privacy-controls"><div><strong>{t("持仓、规则和决策记录", "Portfolio, rules, and decision reviews")}</strong><span>{t("清空会同时删除个人云端记录和本机备份；操作前可在“历史记录”和“我的持仓”分别导出。", "Clearing removes both cloud records and device backup. Export your history and portfolio first if needed.")}</span></div>{confirmClear ? <div className="privacy-clear-confirm"><span>{t("此操作无法撤销。确认清空持仓、规则和决策记录？", "This cannot be undone. Clear portfolio, rules, and decision reviews?")}</span><Button variant="outline" onClick={() => setConfirmClear(false)}>{t("取消", "Cancel")}</Button><Button onClick={onClear}>{t("确认清空", "Clear data")}</Button></div> : <Button variant="outline" onClick={() => setConfirmClear(true)}>{t("清空持仓、规则和决策", "Clear portfolio, rules, and reviews")}</Button>}</footer>
+    <footer className="privacy-controls"><div><strong>{t("匿名体验反馈", "Anonymous research feedback")}</strong><span>{t("删除本账号提交的体验会话和反馈；不会影响持仓、规则或决策记录。", "Delete research sessions and feedback submitted by this account without affecting portfolio or decision data.")}</span>{studyClearStatus&&<small role="status">{studyClearStatus}</small>}</div>{confirmStudyClear ? <div className="privacy-clear-confirm"><span>{t("确认删除本人提交的全部匿名体验反馈？", "Delete all anonymous feedback submitted by this account?")}</span><Button variant="outline" onClick={() => setConfirmStudyClear(false)}>{t("取消", "Cancel")}</Button><Button onClick={async()=>{const removed=await onClearStudy();setStudyClearStatus(removed?t("匿名体验反馈已删除","Anonymous feedback deleted"):t("删除失败，请稍后重试","Deletion failed. Try again later."));if(removed)setConfirmStudyClear(false);}}>{t("确认删除", "Delete feedback")}</Button></div> : <Button variant="outline" onClick={() => setConfirmStudyClear(true)}>{t("删除我的匿名体验反馈", "Delete my anonymous feedback")}</Button>}</footer>
+  </section></main>;
 }
 
 function parseHoldingCsv(text: string): HoldingBook {
@@ -1194,6 +1277,8 @@ function HoldingsView({ holdings, capital, maxSingleStockValue, maxSingleStockRa
 }
 
 function DecisionView({ stock, action, rules, holdings, priorDecision, researchContext, onEditRules, onDone, onBack }: { stock: Stock; action: TradeAction; rules: UserRules; holdings: HoldingBook; priorDecision?: DecisionResult; researchContext?: ResearchDecisionContext; onEditRules: () => void; onDone: (result: DecisionResult) => void; onBack: () => void }) {
+  const { isEnglish, locale } = useI18n();
+  const actionText = tradeActionLabel(action, isEnglish);
   const testSessionId=useMemo(()=>crypto.randomUUID(),[]);
   const testSessionCompleted=useRef(false);
   const currentHolding = holdingValueFor(holdings, stock.code);
@@ -1236,19 +1321,19 @@ function DecisionView({ stock, action, rules, holdings, priorDecision, researchC
   const reasonMissing = reason.trim().length < 6;
   const invalidationMissing = rules.requireInvalidation && invalid.trim().length < 4;
   const evidencePending = Boolean(externalClaim) && !evidenceCheck;
-  const evidenceIssue = externalClaim ? evidencePending ? "外部信息尚未核实" : hasFormalMatch ? "外部说法找到相关正式披露，仍需阅读原文" : "外部说法未找到相关正式披露" : "";
+  const evidenceIssue = externalClaim ? evidencePending ? pick(isEnglish, "外部信息尚未核实", "External information has not been verified") : hasFormalMatch ? pick(isEnglish, "外部说法找到相关正式披露，仍需阅读原文", "A related formal disclosure was found; read the original source") : pick(isEnglish, "外部说法未找到相关正式披露", "No related formal disclosure was found") : "";
   const quantVerification = researchContext?.quantVerification;
   const quantResult = quantVerification?.result;
   const horizonDays = horizon === "1周" ? 5 : horizon === "3个月" ? 60 : 20;
   const quantIssues = quantResult ? [
-    quantResult.maxDrawdownPct > rules.maxHistoricalDrawdown ? `历史最大回撤 ${quantResult.maxDrawdownPct.toFixed(1)}% 超过个人边界 ${rules.maxHistoricalDrawdown}%` : "",
-    quantVerification.hypothesis.holdingPeriodDays !== horizonDays ? `计划观察 ${horizon}，但历史检验使用 ${quantVerification.hypothesis.holdingPeriodDays} 个交易日` : "",
-    quantResult.outOfSampleMetrics.sampleCount < rules.minOutOfSampleSamples ? `样本外仅 ${quantResult.outOfSampleMetrics.sampleCount} 个样本，低于个人要求 ${rules.minOutOfSampleSamples}` : "",
-    quantResult.outOfSampleMetrics.netReturnPct <= 0 ? "加入成本后，样本外优势未保持" : "",
-    quantResult.audit.parameterFragility ? "参数轻微变化后结果方向反转" : "",
-    quantResult.audit.returnConcentration ? "历史正收益主要集中在少数时期或股票" : "",
+    quantResult.maxDrawdownPct > rules.maxHistoricalDrawdown ? pick(isEnglish, `历史最大回撤 ${quantResult.maxDrawdownPct.toFixed(1)}% 超过个人边界 ${rules.maxHistoricalDrawdown}%`, `Historical maximum drawdown ${quantResult.maxDrawdownPct.toFixed(1)}% exceeds your ${rules.maxHistoricalDrawdown}% limit`) : "",
+    quantVerification.hypothesis.holdingPeriodDays !== horizonDays ? pick(isEnglish, `计划观察 ${horizon}，但历史检验使用 ${quantVerification.hypothesis.holdingPeriodDays} 个交易日`, `Planned horizon: ${horizonLabel(horizon, true)}; historical test horizon: ${quantVerification.hypothesis.holdingPeriodDays} trading days`) : "",
+    quantResult.outOfSampleMetrics.sampleCount < rules.minOutOfSampleSamples ? pick(isEnglish, `样本外仅 ${quantResult.outOfSampleMetrics.sampleCount} 个样本，低于个人要求 ${rules.minOutOfSampleSamples}`, `Only ${quantResult.outOfSampleMetrics.sampleCount} out-of-sample observations, below your minimum of ${rules.minOutOfSampleSamples}`) : "",
+    quantResult.outOfSampleMetrics.netReturnPct <= 0 ? pick(isEnglish, "加入成本后，样本外优势未保持", "The out-of-sample advantage did not persist after costs") : "",
+    quantResult.audit.parameterFragility ? pick(isEnglish, "参数轻微变化后结果方向反转", "A small parameter change reversed the result") : "",
+    quantResult.audit.returnConcentration ? pick(isEnglish, "历史正收益主要集中在少数时期或股票", "Historical gains were concentrated in a few periods or securities") : "",
   ].filter(Boolean) : [];
-  const reviewIssues = [reasonMissing ? "尚未写清操作理由" : !reasonConfirmed ? "理由拆解尚未确认" : "", reasonAmountMismatch ? "理由中的金额与计划金额不一致" : "", isOverPosition ? "单股仓位超过个人边界" : "", overSingleAlert ? "单笔金额超过提醒值" : "", evidenceIssue, invalidationMissing ? "尚未填写判断失效条件" : "", ...quantIssues].filter(Boolean);
+  const reviewIssues = [reasonMissing ? pick(isEnglish, "尚未写清操作理由", "The reason for the planned action is not clear") : !reasonConfirmed ? pick(isEnglish, "理由拆解尚未确认", "The reason breakdown has not been confirmed") : "", reasonAmountMismatch ? pick(isEnglish, "理由中的金额与计划金额不一致", "The amount in the reason does not match the plan") : "", isOverPosition ? pick(isEnglish, "单股仓位超过个人边界", "Single-position exposure exceeds your rule") : "", overSingleAlert ? pick(isEnglish, "单笔金额超过提醒值", "The planned amount exceeds your alert threshold") : "", evidenceIssue, invalidationMissing ? pick(isEnglish, "尚未填写判断失效条件", "No invalidation condition has been recorded") : "", ...quantIssues].filter(Boolean);
   const issueCount = reviewIssues.length;
   const canCompleteReview = !reasonMissing && reasonConfirmed && !reasonAmountMismatch && !invalidationMissing && !evidencePending && !evidenceLoading;
   const originalProjectedHolding = Math.max(0, currentHolding + (action === "卖出" ? -Math.min(initialAmount, currentHolding) : action === "继续观察" ? 0 : initialAmount));
@@ -1256,14 +1341,14 @@ function DecisionView({ stock, action, rules, holdings, priorDecision, researchC
   const originalScenarioLoss = Math.round(originalProjectedHolding * .2);
   const originalPositionOver = originalProjectedHolding > effectiveMaxHolding;
   const originalAlertOver = initialAmount > rules.singleAmountAlert;
-  const originalIssues = [reasonMissing ? "原计划未写清操作理由" : "", originalPositionOver ? "单股仓位超过个人边界" : "", originalAlertOver ? "单笔金额超过提醒值" : "", externalClaim ? "理由包含待核实外部信息" : "", rules.requireInvalidation ? "原计划未填写判断失效条件" : ""].filter(Boolean);
+  const originalIssues = [reasonMissing ? pick(isEnglish, "原计划未写清操作理由", "The original plan did not state a clear reason") : "", originalPositionOver ? pick(isEnglish, "单股仓位超过个人边界", "Single-position exposure exceeds your rule") : "", originalAlertOver ? pick(isEnglish, "单笔金额超过提醒值", "The planned amount exceeds your alert threshold") : "", externalClaim ? pick(isEnglish, "理由包含待核实外部信息", "The reason contains unverified external information") : "", rules.requireInvalidation ? pick(isEnglish, "原计划未填写判断失效条件", "The original plan did not state an invalidation condition") : ""].filter(Boolean);
   const verifyReason = async () => {
     if (!reason.trim()) {
-      setEvidenceError("请先写下需要核实的交易理由。");
+      setEvidenceError(pick(isEnglish, "请先写下需要核实的交易理由。", "Write the reason you want to verify first."));
       return;
     }
     if (!reasonConfirmed) {
-      setEvidenceError("请先确认右侧的理由拆解，再检索公开资料。");
+      setEvidenceError(pick(isEnglish, "请先确认右侧的理由拆解，再检索公开资料。", "Confirm the reason breakdown before searching public sources."));
       return;
     }
     setEvidenceLoading(true);
@@ -1272,10 +1357,10 @@ function DecisionView({ stock, action, rules, holdings, priorDecision, researchC
     try {
       const response = await fetch(`/api/evidence/${stock.code}?reason=${encodeURIComponent(reason.trim())}`, { cache: "no-store" });
       const payload = await response.json() as LiveEvidencePayload & { message?: string };
-      if (!response.ok) throw new Error(payload.message || "公开资料检索暂时不可用");
+      if (!response.ok) throw new Error(payload.message || pick(isEnglish, "公开资料检索暂时不可用", "Public-source search is temporarily unavailable"));
       setEvidenceCheck(payload);
     } catch (error) {
-      setEvidenceError(error instanceof Error ? error.message : "公开资料检索暂时不可用");
+      setEvidenceError(error instanceof Error ? error.message : pick(isEnglish, "公开资料检索暂时不可用", "Public-source search is temporarily unavailable"));
     } finally {
       setEvidenceLoading(false);
     }
@@ -1284,7 +1369,7 @@ function DecisionView({ stock, action, rules, holdings, priorDecision, researchC
     const completedAt = new Date();
     testSessionCompleted.current=true;
     void fetch("/api/evaluation/user-study",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({eventType:"session",sessionId:testSessionId,status:"task_completed",durationSeconds})});
-    onDone({ stock, action, originalAmount: initialAmount, finalAmount, result, message, reason, reasonStructure, invalidation: invalid, horizon, reviewedAt: completedAt.toLocaleString("zh-CN", { month: "numeric", day: "2-digit", hour: "2-digit", minute: "2-digit" }), reviewedAtIso: completedAt.toISOString(), ruleSnapshot: rules, issues: [...originalIssues, ...quantIssues], remainingIssues: reviewIssues, scenarioLoss, originalScenarioLoss, durationSeconds, studySessionId:testSessionId, evidence: evidenceCheck, quantVerification: quantVerification ? { ...quantVerification, includedInDecision: true } : undefined });
+    onDone({ stock, action, originalAmount: initialAmount, finalAmount, result, message, reason, reasonStructure, invalidation: invalid, horizon, reviewedAt: completedAt.toLocaleString(locale, { month: "numeric", day: "2-digit", hour: "2-digit", minute: "2-digit" }), reviewedAtIso: completedAt.toISOString(), ruleSnapshot: rules, issues: [...originalIssues, ...quantIssues], remainingIssues: reviewIssues, scenarioLoss, originalScenarioLoss, durationSeconds, studySessionId:testSessionId, evidence: evidenceCheck, quantVerification: quantVerification ? { ...quantVerification, includedInDecision: true } : undefined });
   };
   return (
     <main className="decision-layout view-enter" id="main-content">
@@ -1483,6 +1568,7 @@ function HistoryView({ records, onStart, onResearch, onRecheck, onRestore }: { r
 }
 
 export default function Home({ authenticatedUser, initialView = "desk", initialCode = "600519" }: { authenticatedUser: string; initialView?: View; initialCode?: string }) {
+  const { isEnglish } = useI18n();
   const [view, setView] = useState<View>(initialView);
   const [stock, setStock] = useState(() => stocks.find((item) => item.code === initialCode) ?? createCodeStock(initialCode));
   const [action, setAction] = useState<TradeAction>("买入");
@@ -1626,13 +1712,13 @@ export default function Home({ authenticatedUser, initialView = "desk", initialC
   }, [statusStockCode]);
   return (
     <div className="app-shell">
-      <a className="skip-link" href="#main-content">跳到主要内容</a>
+      <a className="skip-link" href="#main-content">{pick(isEnglish,"跳到主要内容","Skip to main content")}</a>
       <AppNavigation
         activePath={view === "portfolio" || view === "history" || view === "rules" || view === "privacy" ? "/portfolio" : view === "newDecision" || view === "decision" || view === "decisionResult" ? "/opportunity" : "/analysis"}
         activeHref={view === "history" ? "/analysis?view=history" : view === "portfolio" ? "/portfolio" : view === "rules" || view === "privacy" ? "/profile" : view === "newDecision" || view === "decision" || view === "decisionResult" ? "/analysis?view=decision" : "/analysis?view=research"}
       />
       <div className="app-body">
-        <AppHeader view={view} stockCode={statusStockCode} freshnessOverride={freshnessOverride} userName={authenticatedUser} syncStatus={syncStatus} onNewDecision={startNewDecision} onSelectStock={openResearch} onDataStatus={() => setShowDataStatus(true)} />
+        <AppHeader view={view} stockCode={statusStockCode} freshnessOverride={freshnessOverride} userName={isEnglish&&authenticatedUser==="本地测试用户"?"Local test user":authenticatedUser} syncStatus={syncStatus} onNewDecision={startNewDecision} onSelectStock={openResearch} onDataStatus={() => setShowDataStatus(true)} />
         {showDataStatus && <DataStatusDrawer stockCode={statusStockCode} open onClose={() => setShowDataStatus(false)} onStatus={syncFreshnessFromDrawer} />}
         {notice && <div className="toast-notice" role="status"><CheckCircle2 />{notice}<button onClick={() => setNotice("")} aria-label="关闭提示"><X /></button></div>}
         {view === "desk" && <DeskView onDecision={startNewDecision} onResearch={openResearch} onHistory={() => setView("history")} onPortfolio={() => setView("portfolio")} latest={latestDecision} records={decisionRecords} holdings={holdings} watched={watched} rules={rules} quantVerifications={quantVerifications} />}

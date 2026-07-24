@@ -41,6 +41,12 @@ export type UserSnapshot = {
   savedAt?: string;
 };
 
+export function mergeUserSnapshotState(current: UserSnapshot, patch: UserSnapshot): UserSnapshot {
+  const next = { ...current, ...patch };
+  delete next.savedAt;
+  return next;
+}
+
 type D1Result<T> = { results?: T[] };
 
 export async function getUserDatabase() {
@@ -97,6 +103,13 @@ export async function writeUserSnapshot(snapshot: UserSnapshot) {
     // Personal writes remain authoritative; index health reports any later sync failure.
   }
   return { status: "saved" as const, updatedAt };
+}
+
+export async function mergeAndWriteUserSnapshot(patch: UserSnapshot) {
+  const current = await readUserSnapshot();
+  if (current.status === "unauthorized") return current;
+  const merged = mergeUserSnapshotState(current.status === "ready" ? current.snapshot : {}, patch);
+  return writeUserSnapshot(merged);
 }
 
 export async function deleteUserSnapshot() {
