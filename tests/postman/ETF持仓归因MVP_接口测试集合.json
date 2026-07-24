@@ -1,0 +1,35 @@
+{
+  "info": {
+    "name": "ETF持仓归因MVP接口测试",
+    "description": "测试CSV解析、持仓归因和AI复盘报告接口",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [{"key": "baseUrl", "value": "http://127.0.0.1:8000"}],
+  "item": [
+    {
+      "name": "1. 解析CSV文本",
+      "event": [{"listen":"test","script":{"type":"text/javascript","exec":["pm.test('状态码为200', () => pm.response.to.have.status(200));","pm.test('返回交易记录数量', () => { const json = pm.response.json(); pm.expect(json.count).to.be.a('number'); pm.expect(json.count).to.be.greaterThan(0); });"]}}],
+      "request": {"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"file_content\": \"日期,代码,名称,方向,价格,数量,金额\\n2026-07-01,510300,沪深300ETF,买入,4.78,1000,4780\\n2026-07-10,513120,港股创新药ETF,买入,1.20,500,600\\n2026-07-15,512010,医药ETF,买入,0.85,2000,1700\",\n  \"delimiter\": \",\"\n}"},"url":{"raw":"{{baseUrl}}/trade/parse","host":["{{baseUrl}}"],"path":["trade","parse"]}}
+    },
+    {
+      "name": "2. 运行持仓归因",
+      "event": [{"listen":"test","script":{"type":"text/javascript","exec":["pm.test('状态码为200', () => pm.response.to.have.status(200));","pm.test('返回持仓和风险提示', () => { const json = pm.response.json(); pm.expect(json.positions).to.be.an('array'); pm.expect(json.risk_flags).to.be.an('array'); pm.expect(json.report).to.be.a('string'); });"]}}],
+      "request": {"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"file_content\": \"日期,代码,名称,方向,价格,数量,金额\\n2026-07-01,510300,沪深300ETF,买入,4.78,1000,4780\\n2026-07-10,513120,港股创新药ETF,买入,1.20,500,600\",\n  \"delimiter\": \",\"\n}"},"url":{"raw":"{{baseUrl}}/attribution/run","host":["{{baseUrl}}"],"path":["attribution","run"]}}
+    },
+    {
+      "name": "3. 生成Mock AI复盘报告",
+      "event": [{"listen":"test","script":{"type":"text/javascript","exec":["pm.test('状态码为200', () => pm.response.to.have.status(200));","pm.test('报告包含合规声明', () => { const json = pm.response.json(); pm.expect(json.report).to.be.a('string'); pm.expect(json.report).to.include('本工具仅用于持仓分析参考，不构成任何投资建议'); });"]}}],
+      "request": {"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\n  \"total_etfs\": 3,\n  \"covered_stocks\": 12,\n  \"main_exposures\": [\"沪深300\", \"港股创新药\", \"医药\"],\n  \"risk_tags\": [\"医药行业集中\", \"港股风险\"],\n  \"behavior_flags\": [\"单一医药方向暴露较高\"],\n  \"total_return\": -0.085,\n  \"main_drivers\": [{\"name\":\"医药创新药\",\"impact\":-0.062}],\n  \"style\": \"简洁中性\",\n  \"max_tokens\": 300\n}"},"url":{"raw":"{{baseUrl}}/report/generate_ai","host":["{{baseUrl}}"],"path":["report","generate_ai"]}}
+    },
+    {
+      "name": "4. 生成详细专业版AI报告",
+      "event": [{"listen":"test","script":{"type":"text/javascript","exec":["pm.test('状态码为200', () => pm.response.to.have.status(200));","pm.test('返回模型标识和报告', () => { const json = pm.response.json(); pm.expect(json.report).to.be.a('string'); pm.expect(json.model_used).to.exist; });"]}}],
+      "request": {"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\"total_etfs\":5,\"main_exposures\":[\"沪深300\",\"半导体\",\"人工智能\"],\"risk_tags\":[\"科技成长暴露较高\"],\"style\":\"详细专业\",\"max_tokens\":400}"},"url":{"raw":"{{baseUrl}}/report/generate_ai","host":["{{baseUrl}}"],"path":["report","generate_ai"]}}
+    },
+    {
+      "name": "5. 空数据AI报告兜底",
+      "event": [{"listen":"test","script":{"type":"text/javascript","exec":["pm.test('状态码为200', () => pm.response.to.have.status(200));","pm.test('返回暂无提示和免责声明', () => { const json = pm.response.json(); pm.expect(json.report).to.include('暂无'); pm.expect(json.disclaimer).to.include('不构成任何投资建议'); });"]}}],
+      "request": {"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\"total_etfs\":0,\"covered_stocks\":0,\"main_exposures\":[],\"risk_tags\":[],\"behavior_flags\":[],\"style\":\"简洁中性\",\"max_tokens\":200}"},"url":{"raw":"{{baseUrl}}/report/generate_ai","host":["{{baseUrl}}"],"path":["report","generate_ai"]}}
+    }
+  ]
+}

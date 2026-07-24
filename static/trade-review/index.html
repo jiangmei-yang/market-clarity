@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>交易复盘｜安心看股</title>
+  <link rel="stylesheet" href="/static/trade-review/style.css">
+  <link rel="stylesheet" href="/static/trade-review/ai.css">
+</head>
+<body>
+  <header class="topbar">
+    <a href="/trade-tool" class="brand"><b>安</b><span><strong>安心看股</strong><small>交易复盘</small></span></a>
+    <span class="mode">仅按导入记录计算</span>
+  </header>
+  <main>
+    <section class="intro">
+      <div><h1>看清一笔交易，怎么影响了组合</h1><p>导入交易 CSV，系统按 FIFO 匹配买卖，拆出当前剩余持仓、已实现盈亏和需要复核的行为信号。</p></div>
+      <aside><strong>不会计算什么</strong><span>当前版本未接入最新市价，所以不计算未实现盈亏，也不判断未来涨跌。</span></aside>
+    </section>
+    <section class="workspace">
+      <div class="input-panel">
+        <div class="heading"><div><small>交易记录</small><h2>导入 CSV</h2></div><button id="exampleButton" class="text-button" type="button">填入示例</button></div>
+        <label for="csvInput">格式：日期,代码,名称,方向,价格,数量,金额,费用</label>
+        <textarea id="csvInput" spellcheck="false" placeholder="粘贴券商导出的交易记录，或点击右上角填入示例"></textarea>
+        <div class="upload-row"><label class="upload"><input id="fileInput" type="file" accept=".csv,text/csv">选择 CSV 文件</label><span id="fileName">也可直接粘贴内容</span></div>
+        <div id="feedback" class="feedback" role="status" aria-live="polite"></div>
+        <button id="runButton" class="primary" type="button"><span>开始复盘</span><span>→</span></button>
+      </div>
+      <div class="report">
+        <div id="empty" class="empty"><div class="document-icon"><i></i><i></i><i></i></div><h2>复盘结果会显示在这里</h2><p>先导入至少一行有效的买入或卖出记录。</p></div>
+        <div id="loading" class="loading hidden"><i></i><i></i><i></i><span>正在匹配交易记录…</span></div>
+        <div id="content" class="hidden"></div>
+      </div>
+    </section>
+  </main>
+  <footer>本工具仅用于持仓分析和交易复盘参考，不构成投资建议、收益承诺或买卖建议。市场有风险，投资需谨慎。</footer>
+  <script src="/static/trade-review/script.js" defer></script>
+</body>
+</html>

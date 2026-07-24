@@ -16,6 +16,14 @@ IMPORTANT_TERMS = (
 )
 OPINION_MARKERS = ("观点", "解读", "点评", "研报", "分析师", "机构看", "目标价", "股吧", "预测")
 OFFICIAL_MARKERS = ("巨潮资讯", "上海证券交易所", "深圳证券交易所", "北京证券交易所", "公司公告")
+COMPANY_PREFIXES = ("中国", "贵州", "上海", "深圳", "北京", "江苏", "浙江", "广东", "山东", "四川")
+EVENT_FAMILIES = (
+    ("价格调整", ("涨价", "降价", "调价", "上调", "下调", "提价", "零售价", "合同价")),
+    ("订单合作", ("订单", "合同", "中标", "合作")),
+    ("业绩财务", ("业绩", "利润", "营收", "现金流", "预增", "预亏")),
+    ("股东资本", ("回购", "增持", "减持", "分红", "解禁")),
+    ("监管风险", ("处罚", "调查", "立案", "诉讼", "问询")),
+)
 
 
 def _safe_text(value, limit: int = 240) -> str:
@@ -32,6 +40,25 @@ def _reason_terms(reason: str, name: str, code: str) -> set[str]:
     terms = {term for term in IMPORTANT_TERMS if term in reason}
     terms |= set(re.findall(r"[A-Za-z]{2,}|\d{6}", reason))
     return terms
+
+
+def _entity_terms(name: str, code: str) -> set[str]:
+    terms = {code, name}
+    for prefix in COMPANY_PREFIXES:
+        if name.startswith(prefix) and len(name) - len(prefix) >= 2:
+            terms.add(name[len(prefix):])
+    return {term for term in terms if term}
+
+
+def _event_key(item: dict) -> str:
+    title_key = _title_key(item.get("title", ""))
+    if item.get("category") == "正式披露":
+        return title_key
+    combined = f'{item.get("title", "")} {item.get("summary", "")}'
+    for family, terms in EVENT_FAMILIES:
+        if any(term in combined for term in terms):
+            return f'{item.get("category", "")}:{str(item.get("published_at", ""))[:10]}:{family}'
+    return title_key
 
 
 def _news_category(source: str, title: str, url: str) -> str:
@@ -67,6 +94,7 @@ def build_information_feed(
     current = now or datetime.now()
     cutoff = current - timedelta(days=max_age_days)
     reason_terms = _reason_terms(reason, name, code)
+    entity_terms = _entity_terms(name, code)
     candidates: list[dict] = []
 
     announcement_frame = announcements.data if isinstance(announcements.data, pd.DataFrame) else pd.DataFrame()
@@ -99,6 +127,13 @@ def build_information_feed(
         combined = f"{title} {summary}"
         matched = sorted(term for term in reason_terms if term and term in combined)
         category = _news_category(source, title, url)
+        # Stock news aggregators often return broad market stories that only
+        # mention the company incidentally in the body. Keep those only when
+        # they match the user's actual claim; otherwise require the company
+        # name, a stable alias, or its code in the title.
+        entity_in_title = any(term in title for term in entity_terms)
+        if category != "正式披露" and not entity_in_title and not matched:
+            continue
         age_hours = max(0.0, (current - published).total_seconds() / 3600)
         candidates.append({
             "published_at": published.isoformat(timespec="minutes"), "title": title,
@@ -111,12 +146,24 @@ def build_information_feed(
 
     deduped: dict[str, dict] = {}
     for item in candidates:
-        key = _title_key(item["title"])
+        key = _event_key(item)
         if not key:
             continue
         previous = deduped.get(key)
-        if previous is None or item["relevance_score"] > previous["relevance_score"]:
+        if previous is None:
+            item["corroborating_sources"] = [item["source"]] if item.get("source") else []
             deduped[key] = item
+            continue
+        sources = set(previous.get("corroborating_sources", [])) | set(item.get("corroborating_sources", []))
+        if previous.get("source"):
+            sources.add(previous["source"])
+        if item.get("source"):
+            sources.add(item["source"])
+        chosen = dict(item if item["relevance_score"] > previous["relevance_score"] else previous)
+        chosen["corroborating_sources"] = sorted(sources)
+        if len(sources) > 1:
+            chosen["relation"] = f'{chosen["relation"]} 同一事件另有 {len(sources) - 1} 个独立来源报道。'
+        deduped[key] = chosen
     items = sorted(
         deduped.values(),
         key=lambda item: (-item["relevance_score"], -datetime.fromisoformat(item["published_at"]).timestamp()),
@@ -124,10 +171,15 @@ def build_information_feed(
     for item in items:
         item.pop("relevance_score", None)
     messages = [message for message in (announcements.message, news.message) if message]
+    feed_sources = set()
+    for item in items:
+        if item.get("source"):
+            feed_sources.add(item["source"])
+        feed_sources.update(source for source in item.get("corroborating_sources", []) if source)
     return {
         "items": items,
         "updated_at": max(news.updated_at, announcements.updated_at).isoformat(timespec="seconds"),
-        "sources": sorted({item["source"] for item in items}),
+        "sources": sorted(feed_sources),
         "is_demo": news.is_demo or announcements.is_demo,
         "data_mode": "demo" if news.is_demo and announcements.is_demo else "mixed" if news.is_demo or announcements.is_demo else "live",
         "message": " ".join(messages),

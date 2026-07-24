@@ -33,6 +33,32 @@ def _near(text: str, keywords: tuple[str, ...], amounts: list[tuple[float, str, 
     return amount, window.strip()
 
 
+def _near_in_same_clause(
+    text: str,
+    keywords: tuple[str, ...],
+    amounts: list[tuple[float, str, int]],
+) -> tuple[float, str] | None:
+    """Match sensitive amounts without borrowing a value from another sentence."""
+    boundaries = "。！？；\n"
+    candidates = []
+    for amount, raw, pos in amounts:
+        start = max(text.rfind(mark, 0, pos) for mark in boundaries) + 1
+        following = [text.find(mark, pos + len(raw)) for mark in boundaries]
+        following = [index for index in following if index >= 0]
+        end = min(following) if following else len(text)
+        clause = text[start:end].strip()
+        keyword_positions = [clause.find(word) for word in keywords if word in clause]
+        if not keyword_positions:
+            continue
+        local_amount_pos = max(0, pos - start)
+        distance = min(abs(local_amount_pos - keyword_pos) for keyword_pos in keyword_positions)
+        candidates.append((-distance, amount, clause))
+    if not candidates:
+        return None
+    _, amount, clause = max(candidates)
+    return amount, clause
+
+
 class RuleOnboardingParser:
     def parse(self, text: str, template: str = "自定义提醒模式") -> RuleOnboardingResult:
         raw = str(text or "").strip()
@@ -42,7 +68,7 @@ class RuleOnboardingParser:
 
         total = _near(raw, ("投资", "炒股", "资金", "拿", "总共", "本金"), amounts)
         single = _near(raw, ("一只", "单只", "每只", "不要超过", "单股"), amounts)
-        loss = _near(raw, ("亏", "损失", "承受", "接受"), amounts)
+        loss = _near_in_same_clause(raw, ("亏", "损失", "承受", "接受"), amounts)
         if total:
             base.total_capital = total[0]
             interpretations.append(RuleInterpretation(field="total_capital", label="总可投资资金", value=total[0], understood_from=total[1]))

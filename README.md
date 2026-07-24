@@ -21,14 +21,18 @@
 产品先提供可追溯的股票研究，再在用户准备行动时进入决策验证：
 
 ```text
-搜索股票 → 阅读核心结论、市场温度与关键位置 → 查看量价和阶段表现
-→ 发起决策验证 → 计算仓位和亏损情景 → 维持、修改或暂缓
+搜索股票 → 阅读研究快照 → 对照支持证据、反方证据和待核实项
+→ 查看事件与来源雷达 → 带着研究背景发起决策验证
+→ 计算仓位和亏损情景 → 维持、修改或暂缓
 ```
 
 ## 已实现功能
 
 - 首页工作台：首屏展示三大指数、股票分析与交易前检查两个核心入口，并汇总持仓、个人规则和最近一次检查。
 - 智能研判驾驶舱：把市场温度、趋势结构、量价关系、财务质量、主要风险和关键位置集中在一个页面。
+- 平衡研究快照：强制并列展示支持证据、反方证据和待核实信息，不生成综合买卖评分。
+- 事件与观点雷达：将近 45 日公告和新闻按事件类型、来源等级与内容性质整理，区分正式披露、媒体报道和市场观点。
+- 研究到决策：从研究页发起检查时，正反证据、来源覆盖和近期事件会保留到决策结果中。
 - 阶段表现：按近 5/20/60/120 个交易日展示区间变化，帮助用户区分短期波动与中期结构。
 - 研究历史：保留最近研究过的股票，便于快速回看，不需要每次重新搜索。
 - 个人风险边界：可投资资金、单股/行业/单笔上限、亏损承受、借款规则和自愿冷静期。
@@ -57,7 +61,9 @@
 - 访问密码：`APP_PASSWORD` 存在时使用服务器端会话校验，密码不进入 URL 或网页代码。
 - 数据和隐私页面，以及自动化测试。
 
-手机基线和改进后截图位于 `docs/screenshots/mobile_baseline/` 与 `docs/screenshots/mobile_final/`，覆盖 360×800、390×844、412×915。当前版本可直接运行查看完整界面。
+## 已暂停的手机资料
+
+旧手机基线和截图仍保存在 `docs/screenshots/`，只作为历史资料。当前开发与验收范围是桌面网页版，不使用这些截图证明现版本手机体验。
 
 | 360×800 首页 | 390×844 首页 | 412×915 首页 |
 |---|---|---|
@@ -122,7 +128,9 @@ python -m pip install -r requirements.txt
 python -m streamlit run app.py
 ```
 
-## 手机使用
+## 手机使用（已暂停，不属于当前桌面 MVP 验收）
+
+以下内容仅保留为未来路线记录。当前版本只优化和验收桌面浏览器，请勿用本节说明判断现阶段手机体验。
 
 部署后，最终用户只需在 Chrome、Edge 或 Safari 打开同一个 HTTPS 地址。手机宽度会自动：
 
@@ -151,6 +159,17 @@ uvicorn api:app --reload --port 8000
 接口：
 
 - `GET /health`
+- `GET /etf-tool`（ETF 持仓体检页面）
+- `GET /etf/search?keyword=沪深300`
+- `GET /etf/detail/510300`
+- `GET /etf/holdings/510300`
+- `POST /diagnosis/run`
+- `GET /trade-tool`（交易复盘页面）
+- `POST /trade/upload`（multipart CSV 文件上传）
+- `POST /trade/parse`（CSV 文本解析）
+- `POST /attribution/run`（规则归因）
+- `POST /report/generate_ai`（独立 AI 报告）
+- `POST /attribution/run_with_ai_report`（规则归因 + AI 报告）
 - `GET /stocks/search?q=茅台`
 - `GET /stocks/600519/summary`
 - `GET /stocks/600519/prices?days=366`
@@ -158,6 +177,38 @@ uvicorn api:app --reload --port 8000
 - `POST /v1/onboarding/parse`
 - `POST /v1/decision/parse`
 - `POST /v1/decision/review`
+
+ETF 工具优先通过 AKShare 获取真实 ETF 名单与基金定期披露持仓，在线失败时依次使用最近缓存和明确标记的演示数据。启动 API 后打开 `http://127.0.0.1:8000/etf-tool` 即可测试。若需要固定演示环境，设置 `ETF_USE_DEMO_DATA=true`。持仓是定期披露数据，不是盘中实时持仓；主题暴露按基金名称或业绩比较基准推断。
+
+交易复盘页面可在 `http://127.0.0.1:8000/trade-tool` 使用。需要独立部署时，可直接发布 [单文件页面](static/trade-review-standalone/index.html)，修改其中的 `API_BASE` 指向后端地址；跨域源通过 `CORS_ALLOW_ORIGINS` 配置。AI 报告默认使用确定性 mock；正式配置使用 `AI_PROVIDER=mock|openai|compatible`、`OPENAI_API_KEY`、可选 `OPENAI_BASE_URL` 和 `AI_MODEL`。旧变量 `AI_REPORT_PROVIDER` 仅作为兼容别名保留。
+
+### 接入新版安心看股桌面平台
+
+`sites_frontend` 保留原有工作台、股票研究和决策验证路由，并新增：
+
+- `/etf-tool`：ETF 持仓诊断；
+- `/trade-tool`：持仓交易复盘。
+
+两个入口由桌面平台统一承载，但分析接口仍由当前 FastAPI 服务提供。开发环境分别启动：
+
+```bash
+# 终端 1：统一 Python API
+.venv/bin/uvicorn api:app --host 127.0.0.1 --port 8001
+
+# 终端 2：安心看股桌面前端
+cd sites_frontend
+ANXIN_API_URL=http://127.0.0.1:8001 npm run dev
+```
+
+生产部署必须分为两个运行单元：
+
+1. Python 后端使用仓库根目录部署，启动命令为 `uvicorn api:app --host 0.0.0.0 --port $PORT`；仓库已提供 `Procfile`，且 `requirements.txt` 包含 FastAPI、Uvicorn 和文件上传依赖。
+2. 桌面前端使用 `sites_frontend` 部署，并把 `ANXIN_API_URL` 设置为上一步得到的公开 HTTPS 后端地址。
+3. 后端 `CORS_ALLOW_ORIGINS` 只填写最终安心看股前端域名；代码会忽略通配符 `*`。
+
+Streamlit Community Cloud 只能暴露 Streamlit 主服务，不能同时把本项目的 FastAPI 作为第二个公网端口。因此现有 Streamlit 地址不能直接承担这些 API；需要一个能够运行 Uvicorn 的 Python Web Service，或将这些功能改写为 Streamlit 页面。
+
+Postman 测试集合位于 [ETF持仓归因MVP_接口测试集合.json](tests/postman/ETF持仓归因MVP_接口测试集合.json)，配套样例 CSV 和说明也在 `tests/postman/`。
 
 Streamlit 当前继续直接调用同一 service 层，避免额外网络故障。未来其他前端可以通过 HTTPS 调用 API，但本阶段不开发这些平台。正式对公网部署 API 前必须增加鉴权、限速、CORS 白名单和 `/v1` 版本路径。
 

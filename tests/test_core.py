@@ -16,7 +16,7 @@ from src.decision_review.models import Claim
 from src.decision_review.analyzer import RuleReasonAnalyzer
 from src.decision_review.rules import review_rules
 from src.risk_engine import RiskEngine
-from src.services import build_information_feed, build_research_cockpit, filter_information_items
+from src.services import build_event_radar, build_information_feed, build_research_cockpit, build_research_evidence, filter_information_items
 from src.services.news_intelligence import RuleInformationAnalyzer
 
 
@@ -164,6 +164,46 @@ def test_information_feed_labels_sources_deduplicates_and_ranks():
     assert feed["data_mode"] == "live"
 
 
+def test_event_radar_separates_sources_events_and_content_stance():
+    feed = {
+        "items": [
+            {"published_at": "2026-07-21T10:00", "title": "公司中标重大订单", "summary": "", "source": "巨潮资讯", "category": "正式披露"},
+            {"published_at": "2026-07-20T10:00", "title": "公司收到监管处罚", "summary": "", "source": "财经媒体", "category": "媒体报道"},
+            {"published_at": "2026-07-19T10:00", "title": "机构解读未来走势", "summary": "", "source": "研究机构", "category": "市场观点"},
+        ],
+        "updated_at": "2026-07-21T12:00:00", "data_mode": "live", "message": "",
+    }
+    radar = build_event_radar(feed)
+    assert radar["official_count"] == 1
+    assert radar["source_count"] == 3
+    assert radar["items"][0]["event_type"] == "订单与合作"
+    assert radar["items"][0]["stance"] == "支持性事实"
+    assert radar["items"][1]["stance"] == "风险压力"
+    assert radar["items"][2]["stance"] == "观点解读"
+    assert "股价" not in radar["coverage"]
+
+
+def test_research_evidence_balances_support_counter_and_uncertainty():
+    cockpit = {"market": {"metrics": {"return_20d": 8.2, "ma20_gap": 3.1}}}
+    financials = pd.DataFrame([{
+        "report_date": "2026-03-31", "profit_yoy": 12.0, "roe": 11.0, "debt_ratio": 35.0,
+    }])
+    radar = build_event_radar({
+        "items": [{
+            "published_at": "2026-07-21T10:00", "title": "公司收到监管处罚", "summary": "",
+            "source": "财经媒体", "category": "媒体报道", "url": "",
+        }],
+        "updated_at": "2026-07-21T12:00:00", "data_mode": "live", "message": "",
+    })
+    evidence = build_research_evidence(cockpit, financials, [], radar)
+    assert any(item["source"] == "历史行情" for item in evidence["supporting"])
+    assert any("利润" in item["title"] for item in evidence["supporting"])
+    assert any("处罚" in item["title"] for item in evidence["counter"])
+    assert any("正式披露" in item["title"] for item in evidence["unresolved"])
+    combined = str(evidence)
+    assert "买入建议" not in combined and "卖出建议" not in combined
+
+
 def test_information_time_filter_and_rule_analysis():
     now = datetime(2026, 7, 21, 12)
     items = [
@@ -199,6 +239,42 @@ def test_stock_name_alone_is_not_evidence_for_specific_claim():
     assert RuleInformationAnalyzer().analyze("朋友说公司有大订单", feed).status == "未找到直接相关信息"
 
 
+def test_information_feed_drops_incidental_market_mentions_without_claim_match():
+    now = datetime(2026, 7, 21, 12)
+    news = ensure_news_schema(pd.DataFrame([
+        {
+            "published_at": "2026-07-21 10:00", "title": "某科技股盘中大幅波动",
+            "summary": "盘中价格一度被贵州茅台反超。", "source": "财经媒体", "url": "https://example.com/incidental",
+        },
+        {
+            "published_at": "2026-07-21 09:00", "title": "茅台调整核心产品价格",
+            "summary": "贵州茅台公布最新价格调整。", "source": "财经媒体", "url": "https://example.com/relevant",
+        },
+    ]))
+    feed = build_information_feed(
+        code="600519", name="贵州茅台", reason="我想核实消费需求",
+        news=DataResult(news, "测试新闻"), announcements=DataResult(pd.DataFrame(), "测试公告"), now=now,
+    )
+    titles = [item["title"] for item in feed["items"]]
+    assert "某科技股盘中大幅波动" not in titles
+    assert "茅台调整核心产品价格" in titles
+
+
+def test_information_feed_collapses_same_event_but_preserves_source_coverage():
+    now = datetime(2026, 7, 21, 12)
+    news = ensure_news_schema(pd.DataFrame([
+        {"published_at": "2026-07-21 10:00", "title": "茅台宣布上调产品价格", "summary": "价格上调", "source": "媒体甲", "url": "https://example.com/a"},
+        {"published_at": "2026-07-21 09:00", "title": "贵州茅台核心产品涨价", "summary": "公司调价", "source": "媒体乙", "url": "https://example.com/b"},
+    ]))
+    feed = build_information_feed(
+        code="600519", name="贵州茅台", reason="我想核实价格调整",
+        news=DataResult(news, "测试新闻"), announcements=DataResult(pd.DataFrame(), "测试公告"), now=now,
+    )
+    assert len(feed["items"]) == 1
+    assert set(feed["items"][0]["corroborating_sources"]) == {"媒体甲", "媒体乙"}
+    assert build_event_radar(feed)["source_count"] == 2
+
+
 def test_market_context_is_descriptive_and_offline_safe():
     result = DemoDataProvider().get_price_history("300750")
     context = build_market_context(
@@ -206,7 +282,7 @@ def test_market_context_is_descriptive_and_offline_safe():
         is_demo=result.is_demo, message=result.message,
     )
     assert context["available"] is True
-    assert {"return_20d", "ma20_gap", "rsi14", "volume_ratio_20d"}.issubset(context["metrics"])
+    assert {"return_1d", "return_20d", "ma20_gap", "rsi14", "volume_ratio_20d"}.issubset(context["metrics"])
     assert {item["key"] for item in context["observations"]} == {"trend", "volume", "momentum", "drawdown"}
     rendered = str(context)
     assert "买入" not in rendered and "卖出" not in rendered and "目标价" not in rendered
@@ -278,7 +354,26 @@ def test_parse_natural_trade_request():
     parsed = parse_trade_request("我想补仓贵州茅台2万元，因为最近回调，准备持有一年")
     assert parsed.action == "补仓"
     assert parsed.amount == 20_000
+    assert parsed.holding_period == "一年"
     assert parsed.reason == "最近回调，准备持有一年"
+
+
+def test_holding_period_is_plan_field_not_observable_claim():
+    plan = TradePlan(
+        code="600519", name="贵州茅台", action="买入", amount=20_000,
+        reason="利润在增长，准备持有一年", holding_period="一年",
+    )
+    analysis = RuleReasonAnalyzer().analyze(plan)
+    assert [claim.text for claim in analysis.claims] == ["利润在增长"]
+    assert "没有说明预计持有期限" not in analysis.missing_items
+
+
+def test_trade_parser_never_treats_six_digit_stock_code_as_amount():
+    parsed = parse_trade_request("我想买入600519，计划投入2万元，因为最近回调")
+    assert parsed.amount == 20_000
+    missing = parse_trade_request("我想买入600519，因为最近回调")
+    assert missing.amount == 10_000
+    assert any("没有识别到计划金额" in item for item in missing.unclear_items)
 
 
 def test_parse_natural_trade_request_marks_missing_amount():
@@ -333,6 +428,26 @@ def test_akshare_stock_news_contract():
     assert result.is_demo is False
 
 
+def test_akshare_quote_falls_back_to_cninfo_identity(monkeypatch):
+    class FakeAk:
+        @staticmethod
+        def stock_individual_info_em(**kwargs):
+            raise RuntimeError("primary unavailable")
+
+        @staticmethod
+        def stock_profile_cninfo(**kwargs):
+            return pd.DataFrame([{"A股简称": "贵州茅台", "所属行业": "食品饮料", "上市日期": "2001-08-27"}])
+
+    provider = AkshareProvider.__new__(AkshareProvider)
+    provider.ak = FakeAk()
+    provider._retry = lambda func, *args, **kwargs: func(*args, **{k: v for k, v in kwargs.items() if k != "_attempts"})
+    monkeypatch.setattr(provider, "get_price_history", lambda code: DataResult(price_frame(periods=2), "测试行情"))
+    result = provider.get_quote("600519")
+    assert result.data["name"] == "贵州茅台"
+    assert result.data["industry"] == "食品饮料"
+    assert result.data["list_date"] == "2001-08-27"
+
+
 def test_data_service_cache_round_trip(tmp_path):
     service = DataService(use_demo=True)
     service.cache_dir = tmp_path
@@ -360,6 +475,16 @@ def test_natural_language_rule_parser_extracts_user_values():
     assert result.profile.max_single_stock_pct == pytest.approx(25)
     assert result.profile.max_tolerable_loss == 20000
     assert result.profile.cooldown_hours == 24
+
+
+def test_rule_parser_does_not_reuse_position_limit_as_loss_tolerance():
+    result = SafeRuleOnboardingParser().parse(
+        "我大概拿20万元投资股票，一只股票最好不要超过5万元。亏损后我容易急着补仓，希望隔一天再看。"
+    )
+    interpreted_fields = {item.field for item in result.interpretations}
+    assert "max_trade_amount" in interpreted_fields
+    assert "max_tolerable_loss" not in interpreted_fields
+    assert "还没有明确最大可承受金额损失" in result.unclear_items
 
 
 def test_reason_analysis_separates_claim_types():
@@ -407,6 +532,25 @@ def test_decision_rules_calculate_demo_case():
     assert metrics["post_stock_pct"] == 42
     assert next(x for x in metrics["scenarios"] if x["decline_pct"] == 20)["position_loss"] == 16800
     assert next(x for x in findings if x.rule_id == "single_stock_limit").triggered
+
+
+def test_loss_capacity_uses_profile_limit_without_forcing_extra_daily_input():
+    profile = RiskProfile(total_capital=200000, max_tolerable_loss=10000)
+    plan = TradePlan(code="300750", name="宁德时代", industry="电池", action="买入", amount=60000)
+    findings, _ = review_rules(profile, plan)
+    loss = next(x for x in findings if x.rule_id == "loss_capacity")
+    assert loss.triggered
+    assert loss.actual == 12000
+    assert loss.limit == 10000
+
+
+def test_unknown_industry_is_not_combined_as_a_fake_concentration():
+    profile = RiskProfile(total_capital=200000, max_industry_pct=20)
+    plan = TradePlan(code="600519", name="贵州茅台", industry="数据不足", action="买入", amount=10000)
+    findings, metrics = review_rules(profile, plan, existing_industry_value=150000)
+    assert metrics["post_industry_pct"] is None
+    assert not next(x for x in findings if x.rule_id == "industry_limit").triggered
+    assert next(x for x in findings if x.rule_id == "industry_data_missing").triggered
 
 
 def test_urgent_expression_stops_financial_review():

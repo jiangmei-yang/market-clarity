@@ -18,6 +18,8 @@ class RuleReasonAnalyzer:
         claims: list[Claim] = []
         text = plan.reason.strip()
         for sentence in _sentences(text):
+            if re.fullmatch(r"(?:准备|预计|计划|打算)?\s*持有\s*(?:大约|约)?\s*(?:长期|中期|短期|半年|一年|两年|三年|\d+\s*(?:天|周|个月|年))", sentence):
+                continue
             if any(x in sentence for x in ("朋友", "听说", "据说", "网上", "小红书", "群里", "消息", "传闻")):
                 kind, verify, evidence = "unverified_external_claim", "needs_source", "交易所公告、公司公告或正式定期报告"
             elif any(x in sentence for x in ("应该", "肯定", "必然", "会涨", "反弹", "到底", "目标价")):

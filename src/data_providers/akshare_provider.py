@@ -68,23 +68,35 @@ class AkshareProvider(MarketDataProvider):
     def get_quote(self, code: str) -> DataResult:
         code = normalize_stock_code(code)
         name = code
+        industry = "数据不足"
+        list_date = None
         try:
             info = self._retry(self.ak.stock_individual_info_em, symbol=code, _attempts=1)
             if {"item", "value"}.issubset(info.columns):
                 values = dict(zip(info["item"].astype(str), info["value"]))
                 name = str(values.get("股票简称") or values.get("股票名称") or code)
+                industry = str(values.get("行业") or values.get("所属行业") or "数据不足")
+                list_date = values.get("上市时间") or values.get("上市日期")
         except Exception:
-            pass
+            try:
+                profile = self._retry(self.ak.stock_profile_cninfo, symbol=code, _attempts=1)
+                if not profile.empty:
+                    row = profile.iloc[0]
+                    name = str(row.get("A股简称") or code)
+                    industry = str(row.get("所属行业") or "数据不足")
+                    list_date = row.get("上市日期")
+            except Exception:
+                pass
         hist = self.get_price_history(code).data
         if len(hist) < 2:
             raise RuntimeError("该股票行情数据不足")
         last, prev = hist.iloc[-1], hist.iloc[-2]
-        return DataResult({"code": code, "name": name, "industry": "数据不足", "price": float(last.close), "change_pct": float((last.close / prev.close - 1) * 100), "date": last.date.date(), "pe": None, "pb": None, "market_cap": None}, self.name)
+        return DataResult({"code": code, "name": name, "industry": industry, "price": float(last.close), "change_pct": float((last.close / prev.close - 1) * 100), "date": last.date.date(), "list_date": list_date, "pe": None, "pb": None, "market_cap": None}, self.name)
 
     @lru_cache(maxsize=128)
     def get_company_profile(self, code: str) -> DataResult:
         quote = self.get_quote(code).data
-        return DataResult({**quote, "list_date": None, "is_st": "ST" in quote["name"], "data_date": quote["date"]}, self.name, message="部分基础资料暂缺")
+        return DataResult({**quote, "is_st": "ST" in quote["name"], "data_date": quote["date"]}, self.name, message="部分估值资料暂缺")
 
     @lru_cache(maxsize=128)
     def get_financial_indicators(self, code: str) -> DataResult:

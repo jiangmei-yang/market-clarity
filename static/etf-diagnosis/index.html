@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="查看ETF定期披露持仓、主题暴露和重复重仓。">
+  <title>ETF 持仓体检｜安心看股</title>
+  <link rel="stylesheet" href="/static/etf-diagnosis/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/etf-tool"><b>安</b><span><strong>安心看股</strong><small>ETF 持仓体检</small></span></a>
+    <span id="dataMode" class="mode">等待数据</span>
+  </header>
+
+  <main>
+    <section class="intro">
+      <div><h1>看清底层持仓，再检查是否重复</h1><p>添加 ETF 后，系统读取基金定期披露持仓，计算重仓交叉并说明数据边界。它不预测涨跌，也不替你作出买卖决定。</p></div>
+      <aside><strong>分析口径</strong><span>重复持仓按披露股票计算；主题暴露按基金名称或比较基准推断。</span></aside>
+    </section>
+
+    <section class="workspace">
+      <div class="builder">
+        <div class="heading"><div><small>输入持仓</small><h2>添加 ETF</h2></div><span id="selectedCount">0 / 10</span></div>
+        <form id="searchForm">
+          <label for="keyword">ETF 代码或名称</label>
+          <div class="search"><input id="keyword" autocomplete="off" placeholder="例如 510300 或 半导体"><button id="searchButton">查找</button></div>
+          <p>在线时搜索真实 ETF 名单；接口不可用时会明确显示缓存或演示模式。</p>
+        </form>
+        <div id="feedback" class="feedback" role="status" aria-live="polite"></div>
+        <div id="searchResults" class="results"></div>
+        <div class="subheading"><h3>待诊断持仓</h3><button id="clearButton" class="text-button" disabled>清空</button></div>
+        <div id="selectedList" class="selected-list"></div>
+        <button id="diagnoseButton" class="primary" disabled><span>生成持仓体检</span><span>→</span></button>
+      </div>
+
+      <div class="report" aria-live="polite">
+        <div id="reportEmpty" class="empty report-empty"><div class="document-icon" aria-hidden="true"><i></i><i></i><i></i></div><h2>诊断结果会显示在这里</h2><p>添加两只以上 ETF，才能检查不同产品之间的相同重仓。</p></div>
+        <div id="reportLoading" class="loading hidden"><i></i><i></i><i></i><span>正在读取披露持仓并计算交叉…</span></div>
+        <div id="reportContent" class="hidden"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>本工具仅用于 ETF 持仓暴露分析，不构成投资建议、收益承诺或买卖建议。市场有风险，投资需谨慎。</footer>
+  <script src="/static/etf-diagnosis/script.js" defer></script>
+</body>
+</html>
