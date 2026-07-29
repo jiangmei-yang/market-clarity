@@ -4,6 +4,40 @@
 
 你的第一轮任务是完整理解项目、检查现有实现并提出可执行计划。**第一轮不要修改代码、不要提交、不要推送，也不要创建 PR。**先把审计结果交给负责人确认，确认后再进入实现。
 
+## 必须使用的 GitHub 仓库和分支
+
+```text
+GitHub 仓库：https://github.com/jiangmei-yang/market-clarity
+工作分支：decision_validation
+```
+
+**必须先进入 `decision_validation` 分支，再阅读本文件和其他项目内容。不要从 `main`、`master` 或 `agent/deploy-anxin-mvp` 开始 Decision Validation 工作。**
+
+如果本地还没有项目：
+
+```bash
+git clone --branch decision_validation --single-branch https://github.com/jiangmei-yang/market-clarity.git
+cd market-clarity
+git status -sb
+```
+
+如果本地已经有项目：
+
+```bash
+git fetch origin
+git switch decision_validation
+git pull --ff-only origin decision_validation
+git status -sb
+```
+
+切换后必须看到类似：
+
+```text
+## decision_validation...origin/decision_validation
+```
+
+如果工作树存在未提交修改，导致不能安全切换分支，不要使用 `reset`、`checkout --`、强制切换或删除文件。请停止并向负责人报告具体状态。
+
 ## 一、开始前必须执行
 
 1. 确认当前仓库和分支：
@@ -14,13 +48,13 @@
    git log -5 --oneline
    ```
 
-2. 目标分支应为：
+2. 当前分支必须为：
 
    ```text
    decision_validation
    ```
 
-   如果不是该分支，只报告当前状态，不要在有未提交修改时擅自切换、stash、reset 或删除文件。
+   如果不是该分支，先按上方命令安全切换；如果存在未提交修改，只报告当前状态，不要擅自 stash、reset、强制切换或删除文件。
 
 3. 完整阅读以下文件，不能只看标题或节选：
 
