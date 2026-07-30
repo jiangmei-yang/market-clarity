@@ -3,6 +3,43 @@ from __future__ import annotations
 from .models import RiskProfile, RuleFinding, TradePlan
 
 
+DEFAULT_PROJECTION_SCENARIOS = [
+    {"key": "downside", "label": "压力情景", "annual_return_pct": -20.0, "rationale": "固定压力假设"},
+    {"key": "flat", "label": "持平情景", "annual_return_pct": 0.0, "rationale": "固定持平假设"},
+    {"key": "upside", "label": "改善情景", "annual_return_pct": 20.0, "rationale": "固定改善假设"},
+]
+
+
+def build_asset_projection(base_value: float, scenarios: list[dict] | None = None, *, mode: str = "rules") -> dict:
+    """Build deterministic amount paths from explicit scenario assumptions."""
+    scenario_by_key = {item["key"]: item for item in (scenarios or DEFAULT_PROJECTION_SCENARIOS)}
+    ordered = [
+        scenario_by_key.get("downside", DEFAULT_PROJECTION_SCENARIOS[0]),
+        scenario_by_key.get("flat", DEFAULT_PROJECTION_SCENARIOS[1]),
+        scenario_by_key.get("upside", DEFAULT_PROJECTION_SCENARIOS[2]),
+    ]
+    paths = []
+    for month in (1, 3, 6, 12):
+        row = {"month": month}
+        for scenario in ordered:
+            annual_rate = scenario["annual_return_pct"] / 100
+            value = float(base_value) * ((1 + annual_rate) ** (month / 12))
+            row[scenario["key"]] = {
+                "value": round(value, 2),
+                "change": round(value - float(base_value), 2),
+                "change_pct": round((value / float(base_value) - 1) * 100, 2) if base_value else 0.0,
+            }
+        paths.append(row)
+    return {
+        "base_value": round(float(base_value), 2),
+        "basis": "操作后单股金额",
+        "mode": mode,
+        "scenarios": ordered,
+        "paths": paths,
+        "disclaimer": "这是按情景假设计算的资产路径推演，不是股价预测、收益承诺或买卖建议。",
+    }
+
+
 def review_rules(
     profile: RiskProfile,
     plan: TradePlan,
@@ -41,5 +78,6 @@ def review_rules(
         "post_stock_pct": round(stock_pct, 2),
         "post_industry_pct": round(industry_pct, 2),
         "scenarios": scenarios,
+        "asset_projection": build_asset_projection(post_stock),
     }
     return findings, metrics

@@ -24,7 +24,11 @@ demo = bool(st.session_state.get("decision_demo", False))
 data_service = DataService(use_demo=True if demo else db.get_setting("use_demo", False))
 profile = RiskProfile() if demo else RiskProfile.model_validate(db.get_risk_profile(RiskProfile().model_dump()))
 prefill = st.session_state.get("decision_prefill", {})
-reviewer = DecisionReviewService(secret_value("OPENAI_API_KEY"), secret_value("OPENAI_MODEL", "gpt-5.4-mini"))
+reviewer = DecisionReviewService(
+    secret_value("OPENAI_API_KEY"),
+    secret_value("OPENAI_MODEL", "gpt-5.4-mini"),
+    secret_value("OPENAI_BASE_URL"),
+)
 information_analyzer = SafeInformationAnalyzer(secret_value("OPENAI_API_KEY"), secret_value("OPENAI_MODEL", "gpt-5.4-mini"))
 
 
@@ -423,6 +427,41 @@ if review:
         scenario_cols = st.columns(3)
         for col, scenario in zip(scenario_cols, metrics["scenarios"]):
             col.metric(f'若再下跌 {scenario["decline_pct"]}%', money(scenario["position_loss"]), f'占资金 {scenario["capital_loss_pct"]:.1f}%')
+
+        projection = metrics.get("asset_projection", {})
+        if projection.get("paths"):
+            st.divider()
+            projection_mode = "AI 情景假设" if projection.get("mode") == "openai" else "固定情景假设"
+            st.markdown("#### 操作后资产随时间变化")
+            st.caption(
+                f'{projection_mode} · 计算基准：{projection.get("basis", "操作后单股金额")} '
+                f'{money(projection.get("base_value", 0))}'
+            )
+            scenario_labels = {
+                item["key"]: f'{item["label"]} {item["annual_return_pct"]:+.1f}%'
+                for item in projection.get("scenarios", [])
+            }
+            chart_rows = []
+            display_rows = []
+            for row in projection["paths"]:
+                chart_row = {"时间": f'{row["month"]}个月'}
+                display_row = {"时间": f'{row["month"]}个月'}
+                for key in ("downside", "flat", "upside"):
+                    label = scenario_labels.get(key, key)
+                    chart_row[label] = row[key]["value"]
+                    display_row[label] = money(row[key]["value"])
+                chart_rows.append(chart_row)
+                display_rows.append(display_row)
+            st.line_chart(pd.DataFrame(chart_rows).set_index("时间"), height=300)
+            st.dataframe(pd.DataFrame(display_rows), hide_index=True, width="stretch")
+            rationales = [
+                f'{item["label"]}：{item["rationale"]}'
+                for item in projection.get("scenarios", [])
+                if item.get("rationale")
+            ]
+            if rationales:
+                st.caption("；".join(rationales))
+            st.info(projection.get("disclaimer", "这是情景推演，不是收益承诺或买卖建议。"))
 
     with st.expander("查看资料核实范围", expanded=unverified > 0):
         for item in review["evidence"]:

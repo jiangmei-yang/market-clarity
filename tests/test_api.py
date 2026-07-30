@@ -108,3 +108,11 @@ def test_decision_parse_and_review_api():
     result = reviewed.json()
     assert result["metrics"]["post_stock_pct"] == 42
     assert result["status"] == "需要重点核对"
+    assert [row["month"] for row in result["metrics"]["asset_projection"]["paths"]] == [1, 3, 6, 12]
+
+
+def test_decision_ui_renders_asset_projection_inside_original_scenario_section():
+    source = open("pages/0_1_🧭_决策检查.py", encoding="utf-8").read()
+    assert 'with st.expander("查看市场数据和金额情景"' in source
+    assert "操作后资产随时间变化" in source
+    assert "st.line_chart" in source

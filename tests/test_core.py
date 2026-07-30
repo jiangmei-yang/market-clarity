@@ -14,6 +14,7 @@ from src.database import Database
 from src.decision_review import DecisionReviewService, RiskProfile, SafeRuleOnboardingParser, TradePlan, build_market_context, parse_trade_request
 from src.decision_review.models import Claim
 from src.decision_review.analyzer import RuleReasonAnalyzer
+from src.decision_review.asset_projection import ProjectionAssumption, ProjectionAssumptions, SafeAssetProjection
 from src.decision_review.rules import review_rules
 from src.risk_engine import RiskEngine
 from src.services import build_information_feed, build_research_cockpit, filter_information_items
@@ -406,7 +407,68 @@ def test_decision_rules_calculate_demo_case():
     findings, metrics = review_rules(profile, plan, existing_stock_value=34000, existing_industry_value=34000)
     assert metrics["post_stock_pct"] == 42
     assert next(x for x in metrics["scenarios"] if x["decline_pct"] == 20)["position_loss"] == 16800
+    projection = metrics["asset_projection"]
+    assert projection["base_value"] == 84000
+    assert [row["month"] for row in projection["paths"]] == [1, 3, 6, 12]
+    assert projection["paths"][-1]["flat"]["value"] == 84000
+    assert "不是股价预测" in projection["disclaimer"]
     assert next(x for x in findings if x.rule_id == "single_stock_limit").triggered
+
+
+def test_ai_asset_projection_uses_ai_assumptions_and_deterministic_amounts():
+    class FakeAI:
+        def assumptions(self, profile, plan, metrics):
+            return ProjectionAssumptions(assumptions=[
+                ProjectionAssumption(
+                    key="downside",
+                    label="压力情景",
+                    annual_return_pct=-12,
+                    rationale="证据仍需核实",
+                ),
+                ProjectionAssumption(
+                    key="flat",
+                    label="持平情景",
+                    annual_return_pct=0,
+                    rationale="缺少足够证据",
+                ),
+                ProjectionAssumption(
+                    key="upside",
+                    label="改善情景",
+                    annual_return_pct=18,
+                    rationale="改善假设",
+                ),
+            ])
+
+    projector = SafeAssetProjection()
+    projector.ai = FakeAI()
+    projection = projector.project(
+        RiskProfile(total_capital=200000),
+        TradePlan(code="300750", name="宁德时代", action="买入", amount=50000),
+        {"post_stock_value": 50000, "post_stock_pct": 25},
+    )
+    assert projection["mode"] == "openai"
+    assert projection["paths"][-1]["downside"]["value"] == 44000
+    assert projection["paths"][-1]["upside"]["value"] == 59000
+    assert projection["assumption_source"] == "openai"
+
+
+def test_asset_projection_falls_back_when_ai_fails():
+    errors = []
+
+    class BrokenAI:
+        def assumptions(self, profile, plan, metrics):
+            raise RuntimeError("provider unavailable")
+
+    projector = SafeAssetProjection(on_error=errors.append)
+    projector.ai = BrokenAI()
+    projection = projector.project(
+        RiskProfile(),
+        TradePlan(code="300750", name="宁德时代", action="买入", amount=10000),
+        {"post_stock_value": 10000},
+    )
+    assert projection["mode"] == "rules"
+    assert projection["paths"][-1]["upside"]["value"] == 12000
+    assert len(errors) == 1
 
 
 def test_urgent_expression_stops_financial_review():

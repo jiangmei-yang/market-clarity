@@ -48,7 +48,11 @@ def health():
 
 
 def _decision_service():
-    return DecisionReviewService(os.getenv("OPENAI_API_KEY"), os.getenv("OPENAI_MODEL", "gpt-5.4-mini"))
+    return DecisionReviewService(
+        os.getenv("OPENAI_API_KEY"),
+        os.getenv("OPENAI_MODEL", "gpt-5.4-mini"),
+        os.getenv("OPENAI_BASE_URL"),
+    )
 
 
 @app.post("/v1/onboarding/parse")
