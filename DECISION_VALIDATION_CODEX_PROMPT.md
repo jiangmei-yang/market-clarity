@@ -38,6 +38,39 @@ git status -sb
 
 如果工作树存在未提交修改，导致不能安全切换分支，不要使用 `reset`、`checkout --`、强制切换或删除文件。请停止并向负责人报告具体状态。
 
+## 本任务必须使用 Web 版实现
+
+本任务的正式交付目标是新版桌面 Web 平台：
+
+```text
+sites_frontend/
+```
+
+Decision Validation 的新功能、页面交互、API route 和前端测试必须以 `sites_frontend` 为主。具体入口包括：
+
+```text
+sites_frontend/app/api/evidence/[code]/route.ts
+sites_frontend/app/client-page.tsx
+sites_frontend/app/opportunity/page.tsx
+sites_frontend/app/components/
+sites_frontend/app/lib/
+sites_frontend/tests/
+```
+
+`app.py`、`pages/` 和旧 Streamlit 页面只用于理解历史流程、核对业务规则和发现可复用逻辑。**未经负责人明确确认，不要在 Streamlit 页面实现本次新功能，也不要同时维护两套 UI。**
+
+允许在确有必要时修改共享 Python 业务层，例如：
+
+```text
+src/decision_review/
+src/services/
+api.py
+```
+
+但必须先说明新版 Web 如何调用这些逻辑、哪些消费者受影响，以及为什么不能在 `sites_frontend/app/lib/` 或 Web API route 内完成。不得为了“保持两边一致”而自动复制实现。
+
+本任务的 UI 和端到端验收以 `sites_frontend` 为准。旧 Streamlit 页面正常运行不代表 Web 版任务完成。
+
 ## 一、开始前必须执行
 
 1. 确认当前仓库和分支：
@@ -251,6 +284,8 @@ pages/0_1_🧭_决策检查.py
 - 无 Key、网络失败、空结果和演示数据降级；
 - 决策记录保存了哪些证据字段。
 
+这些文件用于审计现有规则和判断是否需要共享层变更，不代表本任务应在旧 Streamlit UI 中实现功能。
+
 ### 新版网页
 
 ```text
@@ -270,6 +305,8 @@ sites_frontend/tests/course-readiness.test.mjs
 - 是否把标题匹配写得过于肯定；
 - `client-page.tsx` 中哪些逻辑应抽成独立 lib/component；
 - 新状态 schema 会影响哪些消费者。
+
+这是本任务的正式实现与验收范围。提出 DV-01 计划时，必须优先列出 Web 版具体改动；若计划修改 Python 共享层，必须单独说明必要性和 Web 调用路径。
 
 ### 评估
 
@@ -432,10 +469,12 @@ node --test --test-concurrency=1 tests/rendered-html.test.mjs tests/course-readi
 提供最小、可评审的第一阶段计划，包括：
 
 - 计划修改的文件；
+- Web 版的主实现位置和调用路径；
 - 建议 schema；
 - 兼容方案；
 - 新增测试；
 - 不会触碰的文件；
+- 是否需要共享 Python 层变更及其必要性；
 - 预计产生的 commit；
 - 需要负责人确认的问题。
 
