@@ -1,0 +1,463 @@
+# Decision Validation 负责人：Codex 统一启动提示
+
+请把本文件视为本次工作的主提示词。你正在加入 **安心看股（Market Clarity）** 项目，并主要负责 **Decision Validation（决策验证/信息核实）**。
+
+你的第一轮任务是完整理解项目、检查现有实现并提出可执行计划。**第一轮不要修改代码、不要提交、不要推送，也不要创建 PR。**先把审计结果交给负责人确认，确认后再进入实现。
+
+## 正确的仓库与分支关系
+
+```text
+GitHub 仓库：https://github.com/jiangmei-yang/market-clarity
+稳定基线与协作文档：main
+组员现有功能分支：decision-function
+正式 Web 目录：web/
+```
+
+你应继续使用组员已经从 `main` 创建的 `decision-function` 分支。**不要创建新的 `decision_validation` 分支，不要重命名、删除、强制重置或覆盖现有功能分支。**
+
+开始时只执行只读核对：
+
+```bash
+git status -sb
+git branch --show-current
+git fetch origin main
+```
+
+如果当前分支是 `decision-function`，保持不动。如果不是，先报告当前分支和工作树状态，不要擅自切换或创建同名分支。
+
+协作文档保存在 `main`。如果 `decision-function` 创建较早、当前分支中还没有这些文件，可以在不合并、不修改工作树的情况下读取：
+
+```bash
+git show origin/main:AGENTS.md
+git show origin/main:PROJECT_CONTEXT.md
+git show origin/main:PROJECT_HANDOFF.md
+git show origin/main:TASKS.md
+git show origin/main:DECISION_VALIDATION_HANDOFF.md
+git show origin/main:DECISION_VALIDATION_CODEX_PROMPT.md
+git show origin/main:docs/decisions/0003-traceable-decision-validation.md
+```
+
+不要为了读取文档而自动 merge、rebase、cherry-pick 或覆盖组员已有内容。负责人确认后再决定如何同步 `main`。
+
+## 本任务的正式实现目标
+
+正式桌面 Web 产品位于：
+
+```text
+web/
+```
+
+Decision Validation 的新功能、页面交互、API route 和前端测试必须以 `web/` 为主。`app.py`、`pages/` 和旧 Streamlit 页面只用于理解历史流程和复用业务规则；未经负责人明确确认，不要在那里实现本次新功能，也不要同时维护两套 UI。
+
+## 一、开始前必须执行
+
+1. 确认当前仓库和分支：
+
+   ```bash
+   git status -sb
+   git branch --show-current
+   git log -5 --oneline
+   ```
+
+2. 当前工作分支应为：
+
+   ```text
+   decision-function
+   ```
+
+   如果不是该分支，只报告当前状态，不要在有未提交修改时擅自切换、stash、reset、创建分支或删除文件。
+
+3. 完整阅读以下文件，不能只看标题或节选：
+
+   ```text
+   AGENTS.md
+   PROJECT_CONTEXT.md
+   PROJECT_HANDOFF.md
+   TASKS.md
+   DECISION_VALIDATION_HANDOFF.md
+   docs/decisions/README.md
+   docs/decisions/0001-decision-layer-product-boundary.md
+   docs/decisions/0002-desktop-web-primary-surface.md
+   docs/decisions/0003-traceable-decision-validation.md
+   README.md
+   web/README.md
+   web/TECHNICAL_ARCHITECTURE.md
+   MVP_SCOPE.md
+   CORE_USER_FLOW.md
+   EVALUATION.md
+   ```
+
+4. 检查 `TASKS.md` 中 DV-01 至 DV-05 的状态、负责人和依赖。如果负责人名称或范围与团队最新安排不同，先指出，不要自行改写任务所有权。
+
+5. 检查工作树中的未提交修改。它们可能属于其他组员。不得覆盖、回滚、格式化或顺手提交任何无关修改。
+
+## 二、用人话理解这个项目
+
+安心看股不是荐股软件，也不是另一个行情终端。
+
+用户通常已经从东方财富、同花顺、雪球、新闻、朋友或社交平台获得了很多股票信息，但在准备买入、补仓或卖出时，容易出现这些问题：
+
+- 把传闻、观点和事实混在一起；
+- 只看支持自己判断的资料；
+- 没有核实订单、业绩、回购等说法的原始来源；
+- 忽略计划后的仓位、集中度和可能损失；
+- 没有提前写下“什么情况说明原判断可能错了”；
+- 之后复盘时，已经忘记当时依据什么作决定。
+
+产品要做的是：
+
+```text
+整理研究资料
+→ 拆解用户理由
+→ 核实关键信息
+→ 计算个人金额影响
+→ 对照用户自己的规则
+→ 让用户自行维持、修改或延后
+→ 保存当时证据和选择
+```
+
+成功不是预测更准，也不是让用户交易更多，而是帮助用户在行动前减少遗漏、看懂风险并留下可复盘的依据。
+
+## 三、你负责的 Decision Validation 是什么
+
+你负责的是这条链：
+
+```text
+用户原话
+→ 拆成独立说法
+→ 判断每条说法需要什么证据
+→ 检索并分级证据
+→ 判断支持程度
+→ 说明对原判断的影响
+→ 提出仍需回答的问题
+→ 用户自己决定下一步
+```
+
+示例输入：
+
+```text
+朋友说公司拿到百亿元海外订单，业绩应该很快上涨。
+```
+
+不能把它整体当成一条事实。至少应拆成：
+
+1. “公司近期拿到海外订单”——外部事件，需要正式披露核实；
+2. “订单金额约为百亿元”——具体金额，需要公告原文核实；
+3. “订单会很快改善业绩”——因果推断，需要执行周期、收入占比和确认条件；
+4. “股价会上涨”——市场预测，不能由公告直接验证；
+5. “朋友说”——用户转述来源，不是正式证据。
+
+最终输出不应是“可以买”或“不能买”，而应类似：
+
+```text
+已确认：当前取得的正式资料显示公司存在一项合同相关披露。
+未确认：现有证据不能确认百亿元、海外客户及本期收入贡献。
+对原判断的影响：“存在合同”获得部分支持，但“业绩会很快显著改善”仍是未验证推断。
+下一步问题：合同金额占年度收入多少？何时执行并确认收入？是否存在终止或审批条件？
+```
+
+## 四、你的负责范围
+
+### 负责
+
+- 把混合理由拆成可独立核实的原子说法；
+- 区分事实、外部事件、因果推断、市场预测和个人动机；
+- 抽取主体、股票代码、金额、比例、日期、对象和限定词；
+- 为每条说法生成核实问题和所需证据；
+- 建立并执行证据来源等级；
+- 判断完整支持、部分支持、明确冲突、证据不足、资料不可用和资料过期；
+- 展示来源、日期、原文链接、证据片段及检索覆盖；
+- 生成受约束的“对原判断的影响”和下一步问题；
+- 保存作出决定当时的证据快照；
+- 建立专项 golden cases、幻觉防护、失败测试和红队案例。
+
+### 不负责
+
+- 重新设计整个网站；
+- 行情图、完整技术指标或通用股票研究页；
+- 持仓、仓位、行业集中度和损失金额计算；
+- 定义用户应该采用什么风险阈值；
+- Quant Verification 历史检验引擎本身；
+- 选股、目标价、买卖信号、收益预测或自动交易；
+- 通用聊天助手和与本任务无关的 AI provider 功能；
+- 重写其他组员正在修改的模块。
+
+Quant Verification 和 Decision Validation 不同：
+
+- Quant Verification 检查一个明确历史规则过去的表现；
+- Decision Validation 检查用户当前决策理由及其证据；
+- 历史检验结果可以作为一项证据进入决策验证，但不能自动决定结论。
+
+## 五、绝对不能突破的规则
+
+1. 不输出确定性买入、卖出、目标价或收益承诺。
+2. 不自动替用户选择“维持、修改或延后”。
+3. 不把媒体报道、市场观点、社交转述或用户粘贴内容写成正式事实。
+4. 不把标题关键词命中直接解释为完整说法成立。
+5. 不把“未找到”解释为“事件不存在”或“已经证伪”。
+6. 只有高等级正式资料明确冲突时，才能使用 `contradicted`。
+7. 每条肯定性结论都必须能追溯到来源、日期和 evidence ID。
+8. 数据不可用或过期时，不得生成新的实时肯定结论。
+9. AI 不得补写证据中不存在的金额、主体、日期和因果关系。
+10. AI 失败、引用不存在的证据或返回不可解析内容时，必须安全降级。
+11. 金额、仓位、风险边界和统计结果必须来自确定性代码，不能由模型编造。
+12. 不提交 API Key、Token、密码、账户资料、身份信息或真实个人金融明细。
+
+## 六、统一状态语义
+
+审计现有代码时，请以以下目标语义为基准：
+
+| 状态 | 含义 |
+|---|---|
+| `supported` | 高等级证据支持说法的关键组成 |
+| `partially_supported` | 只支持主体、事件、金额或时间的一部分 |
+| `contradicted` | 高等级证据与说法的关键内容明确冲突 |
+| `insufficient` | 当前检索覆盖无法判断 |
+| `unavailable` | 数据源、网络或处理失败，无法核实 |
+| `stale` | 只有过期资料，不能代表当前状态 |
+
+重点检查：
+
+- Python 和 TypeScript 是否使用相同语义；
+- 旧字段和现有页面如何兼容；
+- 决策记录是否保存当时状态，而不是日后静默改变；
+- `未找到`是否错误地升级为 `contradicted`；
+- `unavailable`和`stale`是否仍允许页面形成肯定结论。
+
+## 七、证据来源等级
+
+目标来源等级为：
+
+1. `official_primary`：交易所、巨潮法定披露、公司公告 PDF、监管文件；
+2. `official_structured`：来自正式报告或正式行情的结构化数据；
+3. `reputable_secondary`：有署名、日期和原始出处的正规媒体；
+4. `opinion`：分析师、市场评论和社交观点；
+5. `user_provided`：用户粘贴或转述、尚未独立核实的资料；
+6. `unknown`：无法确认来源。
+
+检查现有实现是否：
+
+- 优先正式原始来源；
+- 二手媒体链接正式原文时，最终引用原文；
+- 低等级来源只能提示需要核实，不能单独支持外部事实；
+- 显示检索时间范围、只查标题还是查到正文、数据更新时间和失败降级；
+- 把公告标题当作候选召回，而不是最终事实判断。
+
+## 八、优先检查的代码
+
+### Python 业务层
+
+```text
+src/decision_review/models.py
+src/decision_review/analyzer.py
+src/decision_review/retrieval.py
+src/decision_review/service.py
+src/services/news_intelligence.py
+pages/0_1_🧭_决策检查.py
+```
+
+重点检查：
+
+- 当前 Claim、EvidenceItem、ReasonAnalysis 和 review 输出结构；
+- 规则版与 AI 版理由拆解差异；
+- 标题关键词、时间范围和证据关系判断；
+- 无 Key、网络失败、空结果和演示数据降级；
+- 决策记录保存了哪些证据字段。
+
+### 新版网页
+
+```text
+web/app/api/evidence/[code]/route.ts
+web/app/client-page.tsx
+web/app/opportunity/page.tsx
+web/app/components/demo-walkthrough.tsx
+web/tests/rendered-html.test.mjs
+web/tests/course-readiness.test.mjs
+```
+
+重点检查：
+
+- evidence API 的数据来源、缓存和可靠性；
+- 巨潮与东方财富回退路径；
+- 页面如何显示“可能相关”“未找到”和失败；
+- 是否把标题匹配写得过于肯定；
+- `client-page.tsx` 中哪些逻辑应抽成独立 lib/component；
+- 新状态 schema 会影响哪些消费者。
+
+### 评估
+
+```text
+web/app/lib/course-evaluation.ts
+web/tests/failure-control.test.mjs
+tests/test_core.py
+tests/test_api.py
+```
+
+重点检查信息核实案例数量及是否覆盖：完整支持、部分支持、冲突、无结果、数据失败、过期、错误主体、金额夸大、日期冲突和提示注入。
+
+## 九、工作包和顺序
+
+### DV-01：基线审计与 schema
+
+先完成这一项，不要直接跳到 UI。
+
+交付：
+
+- 当前数据流图；
+- Claim、Evidence、VerificationResult 的建议 schema；
+- Python/TypeScript 字段映射；
+- 状态语义与旧字段兼容方案；
+- 受影响文件与消费者清单；
+- 最小迁移和测试计划。
+
+### DV-02：原子说法拆解
+
+交付：
+
+- 混合句拆分；
+- 主体、金额、日期、比例、对象及因果词抽取；
+- 用户修改和确认；
+- 无 AI Key 的规则降级；
+- 确认理解不等于确认事实的明确提示。
+
+### DV-03：正式资料和证据关系
+
+交付：
+
+- 正式来源优先；
+- 标题只用于候选召回；
+- 可引用原文或证据片段；
+- 记录哪些组成被覆盖、哪些未覆盖；
+- 部分支持和明确冲突；
+- 数据失败、缓存、新鲜度和覆盖范围。
+
+### DV-04：决策影响说明和 UI
+
+交付固定四段式结果：
+
+1. 每条说法的核实状态；
+2. 已确认与未确认；
+3. 对原判断的逻辑影响；
+4. 下一步需要回答的问题。
+
+页面不显示综合买卖分数，也不预选用户决定。
+
+### DV-05：评估和红队
+
+建立至少 30 个可重复运行的专项案例，包括：
+
+- 正式资料完整支持；
+- 只支持事件、不支持金额；
+- 日期、主体或比例冲突；
+- 媒体报道没有原始出处；
+- 市场观点伪装成事实；
+- 同名公司或错误股票代码；
+- 旧公告被当成近期事件；
+- 没有检索结果；
+- 数据源失败、超时和过期缓存；
+- 用户要求伪造来源；
+- 证据正文中的提示注入；
+- 用户要求确定性买卖建议；
+- 中英文、口语、错别字和多个说法混合。
+
+## 十、实现后的最低测试要求
+
+Python：
+
+```bash
+pytest tests/test_core.py tests/test_api.py
+```
+
+涉及新版网页时：
+
+```bash
+cd web
+npm run lint
+npm run build
+node --test --test-concurrency=1 tests/rendered-html.test.mjs tests/course-readiness.test.mjs
+```
+
+合并前按 `AGENTS.md` 运行更完整的对应测试。若环境缺失导致测试不能运行，必须报告具体命令、错误和未验证风险，不能声称全部通过。
+
+## 十一、Git 与多人协作要求
+
+- 所有实现工作继续在组员现有的 `decision-function` 分支进行；
+- 第一轮审计不修改代码；
+- 实现时只暂存本任务文件，不使用 `git add -A`；
+- 不处理或提交其他组员的未提交修改；
+- 修改共享 schema 前先列出消费者和迁移方案；
+- 避免直接扩大 `web/app/client-page.tsx`，优先抽取独立模块；
+- 每个 commit 只完成一个清晰工作包；
+- 未经负责人明确要求，不推送 force、删除分支、重写历史或直接合并；
+- PR 必须写明问题、实现、边界、测试、截图/样例和剩余限制。
+
+## 十二、你第一轮必须回复的内容
+
+完整阅读和检查后，按以下结构回复负责人。不要只说“我明白了”。
+
+### 1. 项目理解
+
+用 5–8 句话说明：
+
+- 产品解决什么问题；
+- 为什么它不是荐股软件；
+- Information Layer 与 Decision Layer 的关系；
+- Decision Validation 在核心流程中的位置。
+
+### 2. 我的负责范围
+
+分别列出：
+
+- 我负责什么；
+- 我明确不负责什么；
+- 哪些变化需要先与其他负责人协调。
+
+### 3. 当前实现数据流
+
+用文字或 Mermaid 表示：
+
+```text
+输入 → 理由拆解 → 证据 API/检索 → 状态判断 → 页面展示 → 决策记录
+```
+
+必须写出实际文件和主要函数/类型，不能只复述文档。
+
+### 4. 发现的缺口
+
+至少按以下维度列出证据：
+
+- schema；
+- 说法拆解；
+- 来源等级；
+- 标题与原文关系；
+- 状态语义；
+- 失败/过期处理；
+- UI 误解风险；
+- 测试覆盖；
+- 多人修改冲突。
+
+每个缺口包含：文件位置、当前行为、风险、建议修复。
+
+### 5. DV-01 实施计划
+
+提供最小、可评审的第一阶段计划，包括：
+
+- 计划修改的文件；
+- 建议 schema；
+- 兼容方案；
+- 新增测试；
+- 不会触碰的文件；
+- 预计产生的 commit；
+- 需要负责人确认的问题。
+
+### 6. 阻塞与问题
+
+只提出会实质改变范围或 schema 的问题。能从仓库确认的内容不要反问负责人。
+
+## 十三、第一次回复的结束语
+
+第一轮最后明确写：
+
+```text
+我尚未修改任何代码。等待负责人确认 DV-01 计划后再开始实现。
+```
