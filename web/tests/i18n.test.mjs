@@ -19,7 +19,15 @@ test("exposes an accessible language switch in the shared navigation", () => {
   assert.match(navigation, /setLocale\("en"\)/);
   assert.match(navigation, /aria-pressed/);
   assert.match(navigation, /Stock research/);
-  assert.match(navigation, /Pre-trade review/);
+  const decisionGroup = navigation.match(/\{ id: "decision"[\s\S]*?(?=\n  \{ id: "portfolio")/)?.[0];
+  assert.ok(decisionGroup);
+  assert.match(decisionGroup, /href: "\/analysis\?view=decision"/);
+  assert.doesNotMatch(decisionGroup, /children/);
+  assert.match(navigation, /onNavigate\?\.\(primaryHref\)/);
+  assert.match(navigation, /decisionHref/);
+  assert.match(navigation, /data-direct/);
+  assert.doesNotMatch(navigation, /Claim check/);
+  assert.doesNotMatch(navigation, /Trade review/);
   assert.match(navigation, /Product guide/);
 });
 
@@ -91,6 +99,32 @@ test("keeps the core stock research and evidence path usable in English",()=>{
   assert.match(page,/What are you considering\?/);
   assert.match(page,/Position and downside scenarios are calculated next/);
   assert.match(page,/Data and sources/);
+});
+
+test("keeps the complete pre-trade Decision workflow usable in English", async () => {
+  const page = read("app/client-page.tsx");
+  const prepare = read("app/api/decision/prepare/route.ts");
+  const projection = read("app/api/decision/projection/route.ts");
+  for (const label of [
+    "Choose a stock and planned action",
+    "Your plan",
+    "System review summary",
+    "No need to fill every field",
+    "AI dual-channel future scenarios",
+    "Public-evidence forecast",
+    "Technical price forecast",
+    "Structure and review",
+    "Personal review limits",
+    "Evidence timeline",
+    "Review recorded · no trade will be executed",
+  ]) assert.match(page, new RegExp(label));
+  assert.match(page, /context:[\s\S]*?locale,/);
+  assert.match(prepare, /input\.context\.locale/);
+  assert.match(prepare, /must use English/);
+  assert.match(projection, /input\.locale === "en"/);
+  assert.match(projection, /All user-facing JSON strings must be in English/);
+  assert.match(projection, /validateAssetForecastLanguage/);
+  assert.match(page, /No formal disclosure directly matching the wording was found/);
 });
 
 test("keeps all six stock research views operable in English",()=>{
