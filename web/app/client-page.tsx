@@ -1370,7 +1370,7 @@ function HoldingsView({ holdings, capital, maxSingleStockValue, maxSingleStockRa
   </main>;
 }
 
-function DecisionView({ stock, action, rules, holdings, priorDecision, researchContext, onEditRules, onDone, onBack }: { stock: Stock; action: TradeAction; rules: UserRules; holdings: HoldingBook; priorDecision?: DecisionResult; researchContext?: ResearchDecisionContext; onEditRules: () => void; onDone: (result: DecisionResult) => void; onBack: () => void }) {
+function DecisionView({ stock, action, rules, holdings, priorDecision, researchContext, onStockChange, onActionChange, onEditRules, onDone, onBack }: { stock: Stock; action: TradeAction; rules: UserRules; holdings: HoldingBook; priorDecision?: DecisionResult; researchContext?: ResearchDecisionContext; onStockChange: (stock: Stock) => void; onActionChange: (action: TradeAction) => void; onEditRules: () => void; onDone: (result: DecisionResult) => void; onBack: () => void }) {
   const { isEnglish, locale } = useI18n();
   const t = (zh: string, en: string) => pick(isEnglish, zh, en);
   const actionText = tradeActionLabel(action, isEnglish);
@@ -1394,6 +1394,48 @@ function DecisionView({ stock, action, rules, holdings, priorDecision, researchC
   const [automatedReview, setAutomatedReview] = useState<DecisionValidationOutput>();
   const [automationLoading, setAutomationLoading] = useState(false);
   const [automationError, setAutomationError] = useState("");
+  const [detailLevel, setDetailLevel] = useState<"simple" | "advanced">("simple");
+  const [stockQuery, setStockQuery] = useState("");
+  const [stockRemoteMatches, setStockRemoteMatches] = useState<StockSearchItem[]>([]);
+  const [stockSearching, setStockSearching] = useState(false);
+  const stockLocalMatches = useMemo(() => {
+    const normalized = stockQuery.trim().toLowerCase();
+    if (!normalized) return [];
+    return stocks.filter((item) => item.name.toLowerCase().includes(normalized) || item.code.includes(normalized) || item.industry.toLowerCase().includes(normalized)).slice(0, 6);
+  }, [stockQuery]);
+  useEffect(() => {
+    const normalized = stockQuery.trim();
+    if (!normalized || stockLocalMatches.length > 0) {
+      setStockSearching(false);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setStockSearching(true);
+      try {
+        const response = await fetch(`/api/stocks/search?q=${encodeURIComponent(normalized)}&limit=6`, { signal: controller.signal, cache: "no-store" });
+        const payload = await response.json() as { items?: StockSearchItem[] };
+        setStockRemoteMatches(response.ok && Array.isArray(payload.items) ? payload.items : []);
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) setStockRemoteMatches([]);
+      } finally {
+        if (!controller.signal.aborted) setStockSearching(false);
+      }
+    }, 280);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [stockLocalMatches.length, stockQuery]);
+  const stockMatches = useMemo(() => {
+    const remoteStocks = stockRemoteMatches.map((item) => ({ ...createCodeStock(String(item.code).padStart(6, "0")), name: item.name || String(item.code), industry: item.industry || t("A股 · 行业待载入", "A-share · sector pending") }));
+    const combined = [...stockLocalMatches, ...remoteStocks.filter((item) => !stockLocalMatches.some((local) => local.code === item.code))];
+    if (!combined.length && /^\d{6}$/.test(stockQuery.trim()) && !stockSearching) combined.push(createCodeStock(stockQuery.trim()));
+    return combined.slice(0, 6);
+  }, [isEnglish, stockLocalMatches, stockQuery, stockRemoteMatches, stockSearching]);
+  const chooseStock = (nextStock: Stock) => {
+    setStockQuery("");
+    setStockRemoteMatches([]);
+    onStockChange(nextStock);
+  };
+  const availableActions: TradeAction[] = ["买入", "补仓", "卖出", "继续观察"];
   useEffect(() => {
     const timer = window.setInterval(() => setDurationSeconds((seconds) => seconds + 1), 1000);
     return () => window.clearInterval(timer);
@@ -1442,6 +1484,18 @@ function DecisionView({ stock, action, rules, holdings, priorDecision, researchC
   const reviewIssues = [reasonMissing ? pick(isEnglish, "尚未写清操作理由", "The reason for the planned action is not clear") : !reasonConfirmed ? pick(isEnglish, "理由拆解尚未确认", "The reason breakdown has not been confirmed") : "", reasonAmountMismatch ? pick(isEnglish, "理由中的金额与计划金额不一致", "The amount in the reason does not match the plan") : "", isOverPosition ? pick(isEnglish, "单股仓位超过个人边界", "Single-position exposure exceeds your rule") : "", overSingleAlert ? pick(isEnglish, "单笔金额超过提醒值", "The planned amount exceeds your alert threshold") : "", evidenceIssue, invalidationMissing ? pick(isEnglish, "尚未填写判断失效条件", "No invalidation condition has been recorded") : "", ...quantIssues].filter(Boolean);
   const issueCount = reviewIssues.length;
   const canCompleteReview = !reasonMissing && reasonConfirmed && !reasonAmountMismatch && !invalidationMissing && !evidencePending;
+  const isAdvanced = detailLevel === "advanced";
+  const showBeginnerResults = automationLoading || Boolean(automatedReview) || Boolean(automationError);
+  const beginnerForecastMonth = horizon === "3个月" ? 3 : 1;
+  const evidenceBaseForecast = assetProjection?.forecasts?.evidence.paths.find((path) => path.key === "flat")?.points.find((point) => point.month === beginnerForecastMonth);
+  const technicalBaseForecast = assetProjection?.forecasts?.technical.paths.find((path) => path.key === "flat")?.points.find((point) => point.month === beginnerForecastMonth);
+  const signedPercent = (value: number) => `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
+  const beginnerBaseForecasts = [
+    evidenceBaseForecast ? { label: t("资料路径", "evidence path"), changePct: evidenceBaseForecast.changePct } : undefined,
+    technicalBaseForecast ? { label: t("技术路径", "technical path"), changePct: technicalBaseForecast.changePct } : undefined,
+  ].filter((item): item is { label: string; changePct: number } => Boolean(item));
+  const weakerBaseForecast = beginnerBaseForecasts.reduce<{ label: string; changePct: number } | undefined>((weakest, item) => !weakest || item.changePct < weakest.changePct ? item : weakest, undefined);
+  const baseForecastResult = weakerBaseForecast ? Math.round(projectedHolding * weakerBaseForecast.changePct / 100) : undefined;
   const originalProjectedHolding = Math.max(0, currentHolding + (action === "卖出" ? -Math.min(initialAmount, currentHolding) : action === "继续观察" ? 0 : initialAmount));
   const originalProjectedRatio = Number((originalProjectedHolding / rules.investableCapital * 100).toFixed(1));
   const originalScenarioLoss = Math.round(originalProjectedHolding * .2);
@@ -1527,13 +1581,23 @@ function DecisionView({ stock, action, rules, holdings, priorDecision, researchC
     onDone({ stock, action, originalAmount: initialAmount, finalAmount, result, message, reason, reasonStructure, invalidation: invalid, horizon, reviewedAt: completedAt.toLocaleString(locale, { month: "numeric", day: "2-digit", hour: "2-digit", minute: "2-digit" }), reviewedAtIso: completedAt.toISOString(), ruleSnapshot: rules, issues: [...originalIssues, ...quantIssues], remainingIssues: reviewIssues, scenarioLoss, originalScenarioLoss, durationSeconds, studySessionId:testSessionId, evidence: evidenceCheck, quantVerification: quantVerification ? { ...quantVerification, includedInDecision: true } : undefined });
   };
   return (
-    <main className="decision-layout view-enter" id="main-content" tabIndex={-1}>
+    <main className={`decision-layout ${isAdvanced ? "decision-layout-advanced" : "decision-layout-simple"} view-enter`} id="main-content" tabIndex={-1}>
       <article className="workspace decision-canvas">
         <header className="decision-canvas-header">
           <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft data-icon="inline-start" />{t("返回研究", "Back to research")}</Button>
           <div><Badge variant="outline">{stock.code}.{stock.market}</Badge><span>{stock.name}</span><ChevronRight /><span>{t(`${action}审查`, `${actionText} review`)}</span></div>
           <span className="saved-indicator"><Check />{t("本次会话草稿", "Session draft")}</span>
         </header>
+        <section className="decision-level-bar">
+          <div>
+            <strong>{isAdvanced ? t("完整分析", "Full analysis") : t("入门视图", "Essentials")}</strong>
+            <span>{isAdvanced ? t("查看证据、规则明细与 AI 双通道预测", "Inspect evidence, rule details, and AI dual-channel forecasts") : t("先完成判断，只看最关键的三项信息", "Make the decision first with only three essential signals")}</span>
+          </div>
+          <div className="decision-level-switch" role="tablist" aria-label={t("信息层级", "Information level")}>
+            <button type="button" role="tab" aria-selected={!isAdvanced} className={!isAdvanced ? "active" : ""} onClick={() => setDetailLevel("simple")}><ShieldCheck />{t("入门视图", "Essentials")}</button>
+            <button type="button" role="tab" aria-selected={isAdvanced} className={isAdvanced ? "active" : ""} onClick={() => setDetailLevel("advanced")}><BarChart3 />{t("完整分析", "Full analysis")}</button>
+          </div>
+        </section>
         <section className="decision-focus">
           <div className="decision-focus-heading"><div><Badge variant="outline">{t("计划影响实时计算", "Plan impact calculated live")}</Badge><h1>{t(`本次${action}会使单股占比从 ${currentRatio.toFixed(1)}% 变为 ${ratio.toFixed(1)}%${isOverPosition ? `，高于你的 ${effectiveMaxRatio.toFixed(1)}% 上限` : ""}`, `This ${actionText.toLowerCase()} changes the position from ${currentRatio.toFixed(1)}% to ${ratio.toFixed(1)}%${isOverPosition ? `, above your ${effectiveMaxRatio.toFixed(1)}% limit` : ""}`)}</h1><p>{reviewIssues.length ? t(`另有 ${issueCount} 项需要确认：${reviewIssues.join("；")}。`, `${issueCount} item(s) still need confirmation: ${reviewIssues.join("; ")}. `) : t("当前没有触发已设置的提醒边界。", "No configured alert boundary is currently triggered. ")}{t("所有最终选择都由你确认。", "You confirm every final choice.")}</p></div><Badge variant="outline"><Clock3 data-icon="inline-start" />{t("约 1 分钟", "About 1 minute")}</Badge></div>
           <div className="decision-risk-grid">
@@ -1585,7 +1649,13 @@ function DecisionView({ stock, action, rules, holdings, priorDecision, researchC
           <div className="plan-form">
             <SectionHeader title={t("你的计划", "Your plan")} meta={t("只需金额和一句理由", "Only an amount and one-sentence reason")} />
             {researchContext?.reason && <div className="decision-research-context"><FileSearch /><span><strong>{t("已从股票研究带入", "Imported from stock research")}</strong><small>{t(`保留刚才的问题和 ${researchContext.evidence?.feed?.items?.length ?? 0} 条公开资料；仍需确认系统如何拆解你的原话。`, `The question and ${researchContext.evidence?.feed?.items?.length ?? 0} public sources are retained; confirm how the system interpreted your wording.`)}</small></span></div>}
-            <label><span>{t("股票与操作", "Stock and action")}</span><div className="read-only-field"><b>{stock.name}</b><Badge variant="secondary">{actionText}</Badge></div></label>
+            <fieldset className="decision-stock-action">
+              <legend>{t("股票与操作", "Stock and action")}</legend>
+              <div className="decision-stock-search"><Search /><Input value={stockQuery} onChange={(event) => { setStockQuery(event.target.value); setStockRemoteMatches([]); }} onKeyDown={(event) => { if (event.key === "Enter" && stockMatches[0]) { event.preventDefault(); chooseStock(stockMatches[0]); } }} role="combobox" aria-expanded={Boolean(stockQuery)} aria-controls="decision-stock-results" aria-label={t("搜索并选择股票", "Search and choose a stock")} placeholder={t("输入股票名称或 6 位代码", "Search by company or six-digit code")} autoComplete="off" />{stockSearching && <RefreshCw className="spin" />}</div>
+              {stockQuery && <div id="decision-stock-results" className="decision-stock-results" role="listbox" aria-label={t("可选择的股票", "Available stocks")}>{stockMatches.length > 0 ? stockMatches.map((item) => <button type="button" role="option" aria-selected={item.code === stock.code} key={item.code} onClick={() => chooseStock(item)}><span><b>{item.name}</b><small>{item.code}.{item.market} · {item.industry}</small></span>{item.code === stock.code && <Check />}</button>) : <div className="decision-stock-empty"><span>{stockSearching ? t("正在搜索 A 股列表…", "Searching the A-share list…") : t("没有找到匹配股票", "No matching stock found")}</span><small>{t("可尝试输入股票简称或 6 位代码", "Try a company name or six-digit code")}</small></div>}</div>}
+              <div className="decision-selected-stock"><span><small>{t("当前股票", "Selected stock")}</small><strong>{stock.name}</strong><em>{stock.code}.{stock.market}</em></span><Badge variant="secondary">{actionText}</Badge></div>
+              <div className="decision-action-options" role="radiogroup" aria-label={t("计划操作", "Planned action")}>{availableActions.map((item) => { const unavailable = currentHolding === 0 && (item === "补仓" || item === "卖出"); return <button type="button" role="radio" aria-checked={action === item} className={action === item ? "active" : ""} disabled={unavailable} key={item} onClick={() => onActionChange(item)}>{action === item && <Check />}{tradeActionLabel(item, isEnglish)}</button>; })}</div>
+            </fieldset>
             <label><span>{t("计划金额", "Planned amount")}</span><div className="money-input"><span>¥</span><Input aria-label={t("计划金额", "Planned amount")} type="number" min="0" step="1000" value={amount} onChange={(event) => setAmount(Number(event.target.value))} /></div><small>{t("你的单笔提醒金额", "Your per-trade alert")}: ¥{rules.singleAmountAlert.toLocaleString(locale)}</small></label>
             <label><span>{t("为什么现在想操作？", "Why are you considering this action now?")}</span><Textarea value={reason} onChange={(event) => { const value = event.target.value; setReason(value); setReasonStructure(parseReasonStructure(value)); setReasonConfirmed(false); setEvidenceCheck(undefined); }} rows={3} placeholder={t("例如：朋友说公司有新订单，我认为未来一个季度可能改善", "Example: A friend mentioned a new order, and I think the next quarter may improve") } /><small>{t("直接写原话即可；系统会自动拆解、核实公开资料并生成情景路径。", "Write naturally; the system structures the reason, checks public evidence, and generates scenario paths.")}</small></label>
             <div className="compact-horizon"><span>{t("观察期限", "Review horizon")}</span><div className="horizon-options">{["1周", "1个月", "3个月"].map((item) => <button key={item} className={horizon === item ? "active" : ""} onClick={() => setHorizon(item)}>{horizonLabel(item, isEnglish)}</button>)}</div></div>
@@ -1593,8 +1663,25 @@ function DecisionView({ stock, action, rules, holdings, priorDecision, researchC
             {automationError && <Alert className="evidence-check-result error"><TriangleAlert /><AlertTitle>{t("暂时无法完成智能复核", "Smart review is temporarily unavailable")}</AlertTitle><AlertDescription>{automationError}</AlertDescription></Alert>}
             {automatedReview && <details className="generated-invalidation"><summary>{t("调整系统生成的失效条件", "Edit the generated invalidation condition")}</summary><label><span>{t("什么情况说明判断可能错了？", "What would show that this thesis may be wrong?")}</span><Textarea value={invalid} onChange={(event) => setInvalid(event.target.value)} rows={3} /></label><small>{t("这是系统生成的候选条件，保存前仍由你确认。", "This is a generated candidate. You still confirm it before saving.")}</small></details>}
           </div>
-          <div className="reason-map automated" aria-live="polite">
+          <section className={`decision-essentials ${!isAdvanced && !showBeginnerResults ? "decision-result-pending" : ""}`} aria-label={t("决策关键信息", "Decision essentials")}>
+            <header>
+              <div><span>{t("精简预测结果", "Condensed forecast")}</span><strong>{t("只看基准预测、金额结果和核实状态", "Focus on the base forecast, monetary result, and verification status")}</strong></div>
+              <Badge variant={issueCount > 0 ? "outline" : "secondary"}>{issueCount > 0 ? t(`${issueCount} 项需注意`, `${issueCount} to review`) : t("未触发提醒", "No alerts triggered")}</Badge>
+            </header>
+            <div>
+              <article className="decision-essential-forecast attention"><span>{t(`${beginnerForecastMonth} 个月基准预测`, `${beginnerForecastMonth}-month base forecast`)}</span><strong>{evidenceBaseForecast && technicalBaseForecast ? <><b>{t("资料", "Evidence")} {signedPercent(evidenceBaseForecast.changePct)}</b><b>{t("技术", "Technical")} {signedPercent(technicalBaseForecast.changePct)}</b></> : automationLoading ? t("正在生成", "Generating") : t("预测暂不可用", "Forecast unavailable")}</strong><small>{evidenceBaseForecast && technicalBaseForecast ? t("两条独立 AI 路径，不代表收益保证", "Two independent AI paths, not a return guarantee") : t("可在完整分析中查看预测依据", "View forecast basis in Full analysis")}</small></article>
+              <article><span>{t("基准预测结果", "Base-forecast result")}</span><strong className={baseForecastResult && baseForecastResult > 0 ? "positive" : baseForecastResult && baseForecastResult < 0 ? "negative" : ""}>{typeof baseForecastResult === "number" ? `${baseForecastResult > 0 ? "+" : baseForecastResult < 0 ? "−" : ""}¥${Math.abs(baseForecastResult).toLocaleString(locale)}` : automationLoading ? t("正在计算", "Calculating") : "—"}</strong><small>{weakerBaseForecast ? t(`按较弱的${weakerBaseForecast.label} ${signedPercent(weakerBaseForecast.changePct)} 计算`, `Based on the weaker ${weakerBaseForecast.label} at ${signedPercent(weakerBaseForecast.changePct)}`) : t("等待基准预测结果", "Awaiting the base forecast")}</small></article>
+              <article className={automatedReview && evidenceStatus !== "找到相关正式披露" ? "attention" : ""}><span>{t("资料核实", "Evidence check")}</span><strong>{automatedReview ? evidenceStatusLabel(evidenceStatus, isEnglish) ?? t("已完成复核", "Review complete") : t("等待智能复核", "Awaiting smart review")}</strong><small>{automatedReview ? t(`${officialEvidence} 条正式披露 · ${evidenceItems} 条资料`, `${officialEvidence} formal · ${evidenceItems} sources`) : t("提交一句理由后自动完成", "Runs after one-sentence rationale")}</small></article>
+            </div>
+          </section>
+          <div className={`reason-map automated ${!isAdvanced && !showBeginnerResults ? "decision-result-pending" : ""}`} aria-live="polite">
             <SectionHeader title={t("系统复核摘要", "System review summary")} meta={automatedReview ? `${automatedReview.planner_mode === "provider" ? automatedReview.provider : t("规则模式", "Rules mode")} · ${automatedReview.schema_version}` : t("等待一次智能复核", "Awaiting one smart review")} />
+            <div className="decision-beginner-review">
+              {!automatedReview ? <div className={automationLoading ? "beginner-review-empty loading" : "beginner-review-empty"}><Sparkles className={automationLoading ? "spin" : ""} /><div><strong>{automationLoading ? t("正在核实你的计划", "Reviewing your plan") : t("写一句理由，系统完成其余步骤", "Write one reason; the system handles the rest")}</strong><span>{automationLoading ? t("正在整理理由、检索资料并计算风险，请稍候。", "Structuring the rationale, retrieving evidence, and calculating risk.") : t("不需要填写专业术语。智能复核会整理原话、核对公开资料并生成完整分析。", "No specialist terms are needed. Smart review structures your wording, checks public evidence, and prepares the full analysis.")}</span></div></div> : <>
+                <article className="beginner-review-summary"><header><CheckCircle2 /><strong>{t("系统理解", "System interpretation")}</strong><Badge variant="outline">{automatedReview.result.reason_analysis.mode === "openai" ? t("AI 整理", "AI structured") : t("规则整理", "Rules structured")}</Badge></header><p>{automatedReview.result.reason_analysis.summary}</p></article>
+                <div className="beginner-review-facts"><span><FileSearch /><b>{t("公开资料", "Public evidence")}</b><small>{evidenceStatusLabel(evidenceStatus, isEnglish) ?? t("本次未取得核实结论", "No verification result for this review")}</small></span><span><Target /><b>{t("判断失效条件", "Invalidation condition")}</b><small>{invalid || t("系统未生成，请切换完整分析补充", "Not generated; add it in Full analysis")}</small></span></div>
+              </>}
+            </div>
             {!automatedReview && <div className={automationLoading ? "automation-empty loading" : "automation-empty"}><Sparkles className={automationLoading ? "spin" : ""} /><strong>{automationLoading ? t("正在完成四步复核", "Completing the four-step review") : t("不用逐项填写拆解", "No need to fill every field")}</strong><span>{automationLoading ? t("公告检索可能需要几秒；完成后这里只保留需要你确认的差异。", "Disclosure retrieval may take a few seconds. Only differences requiring confirmation remain here.") : t("在左侧写一句原话，系统会自动完成四个步骤，你只检查关键差异。", "Write one sentence on the left. The system completes four steps; you review only the key differences.")}</span><ol><li className={automationLoading ? "running" : ""}>{t("整理原话", "Structure wording")}</li><li className={automationLoading ? "running" : ""}>{t("检索风险知识", "Retrieve risk knowledge")}</li><li className={automationLoading ? "running" : ""}>{t("核对公开资料", "Check public evidence")}</li><li className={automationLoading ? "running" : ""}>{t("计算资产路径", "Calculate asset paths")}</li></ol></div>}
             {automatedReview && <><div className="automation-steps">{automatedReview.plan.steps.map((step) => <span key={step.id} className={step.status}><i>{step.status === "completed" ? <Check /> : <TriangleAlert />}</i><b>{step.title}</b></span>)}</div>
               <article className="automation-summary"><header><Badge variant="secondary">{t("系统理解", "System interpretation")}</Badge><small>{automatedReview.result.reason_analysis.mode === "openai" ? t("AI 结构化 · 本地校验", "AI structured · locally validated") : t("本地规则结构化", "Locally structured by rules")}</small></header><p>{automatedReview.result.reason_analysis.summary}</p><div className="claim-summary-list">{automatedReview.result.reason_analysis.claims.map((claim, index) => <span key={`${claim.type}-${index}`}><Badge variant="outline">{claim.type === "observable_fact" ? t("可核实事实", "Verifiable fact") : claim.type === "unverified_external_claim" ? t("外部说法", "External claim") : claim.type === "prediction_or_inference" ? t("个人推断", "Personal inference") : t("情绪动机", "Emotional motive")}</Badge>{claim.text}</span>)}</div></article>
@@ -1605,7 +1692,7 @@ function DecisionView({ stock, action, rules, holdings, priorDecision, researchC
             </>}
           </div>
         </section>
-        <footer className="decision-action-bar">
+        <footer className={`decision-action-bar ${!isAdvanced && !showBeginnerResults ? "decision-result-pending" : ""}`}>
           <div><strong>{amount === initialAmount ? t("当前计划", "Current plan") : t("修改后预览", "Modified preview")}</strong><span>{t("金额", "Amount")} ¥{amount.toLocaleString(locale)} · {t("单股占比", "Position weight")} {ratio.toFixed(1)}% · {t("观察", "Review in")} {horizonLabel(horizon, isEnglish)} · {isOverPosition ? t(`仍超上限 ${over.toFixed(1)}%`, `${over.toFixed(1)}% above limit`) : t("符合当前上限", "Within current limit")}</span>{!canCompleteReview && <small className="review-completion-hint">{automatedReview ? t("检查系统摘要后确认即可记录选择。", "Review and confirm the system summary to record your choice.") : t("先填写一句理由并完成智能复核。", "Enter one sentence and complete the smart review first.")}</small>}</div>
           <div><Button variant="ghost" size="lg" onClick={() => completeReview("已延迟", amount, t("已保存，稍后再看", "Saved for later review"))}>{t("稍后再看", "Review later")}</Button><Button variant="outline" size="lg" onClick={() => completeReview("维持计划", initialAmount, t("已记录：维持原计划", "Recorded: kept the original plan"))} disabled={!canCompleteReview}>{t("维持原计划", "Keep original plan")}</Button><Button size="lg" onClick={() => completeReview("已修改", amount, t(`已记录修改：¥${amount.toLocaleString()}`, `Recorded change: ¥${amount.toLocaleString(locale)}`))} disabled={!canCompleteReview || amount === initialAmount}>{t("确认修改", "Confirm change")}<ArrowRight data-icon="inline-end" /></Button></div>
         </footer>
@@ -1926,7 +2013,7 @@ export default function Home({ authenticatedUser, initialView = "desk", initialC
         {view === "desk" && <DeskView onDecision={startNewDecision} onResearch={openResearch} onHistory={() => setView("history")} onPortfolio={() => setView("portfolio")} latest={latestDecision} records={decisionRecords} holdings={holdings} watched={watched} rules={rules} quantVerifications={quantVerifications} />}
         {view === "research" && <ResearchView stock={stock} setStock={selectResearchStock} action={action} setAction={setAction} onDecision={goDecision} holdings={holdings} watched={watched} onWatch={saveWatch} capital={rules.investableCapital} records={decisionRecords} quantVerifications={quantVerifications} onSaveQuant={saveQuantVerification} />}
         {view === "newDecision" && <StartDecisionView stock={stock} onSelect={selectResearchStock} action={action} setAction={setAction} onResearch={() => setView("research")} onContinue={goDecision} holdings={holdings} capital={rules.investableCapital} />}
-        {view === "decision" && <DecisionView stock={stock} action={action} rules={rules} holdings={holdings} priorDecision={decisionRecords.find((record) => record.stock.code === stock.code)} researchContext={researchDecisionContext} onEditRules={() => setView("rules")} onDone={finishDecision} onBack={() => setView("research")} />}
+        {view === "decision" && <DecisionView key={`${stock.code}-${action}`} stock={stock} action={action} rules={rules} holdings={holdings} priorDecision={decisionRecords.find((record) => record.stock.code === stock.code)} researchContext={researchDecisionContext} onStockChange={(target) => { setResearchDecisionContext(undefined); selectResearchStock(target); }} onActionChange={(nextAction) => { setResearchDecisionContext(undefined); setAction(nextAction); }} onEditRules={() => setView("rules")} onDone={finishDecision} onBack={() => setView("research")} />}
         {view === "decisionResult" && latestDecision && <DecisionResultView record={latestDecision} holdings={holdings} onDesk={() => setView("desk")} onHistory={() => setView("history")} onResearch={() => { setStock(latestDecision.stock); setView("research"); }} onFeedback={saveTestFeedback} />}
         {view === "history" && <HistoryView records={decisionRecords} onStart={startNewDecision} onResearch={openResearch} onRecheck={recheckDecision} onRestore={restoreDecisionRecords} />}
         {view === "portfolio" && <HoldingsView holdings={holdings} capital={rules.investableCapital} maxSingleStockValue={rules.maxSingleStockValue} maxSingleStockRatio={rules.maxSingleStockRatio} records={decisionRecords} onChange={saveHoldings} onNotice={showNotice} onResearch={openResearch} onReview={startDecisionFor} />}

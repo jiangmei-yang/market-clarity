@@ -107,7 +107,15 @@ test("keeps the complete pre-trade Decision workflow usable in English", async (
   const projection = read("app/api/decision/projection/route.ts");
   for (const label of [
     "Choose a stock and planned action",
+    "Search by company or six-digit code",
+    "Selected stock",
+    "Planned action",
     "Your plan",
+    "Essentials",
+    "Full analysis",
+    "Decision essentials",
+    "Condensed forecast",
+    "base forecast",
     "System review summary",
     "No need to fill every field",
     "AI dual-channel future scenarios",
@@ -125,6 +133,26 @@ test("keeps the complete pre-trade Decision workflow usable in English", async (
   assert.match(projection, /All user-facing JSON strings must be in English/);
   assert.match(projection, /validateAssetForecastLanguage/);
   assert.match(page, /No formal disclosure directly matching the wording was found/);
+  assert.match(page, /useState<"simple" \| "advanced">\("simple"\)/);
+  assert.match(page, /role="tablist"/);
+  assert.match(page, /aria-selected={!isAdvanced}/);
+  assert.match(page, /detailLevel === "advanced"/);
+  assert.match(page, /\/api\/stocks\/search\?q=/);
+  assert.match(page, /onStockChange: \(stock: Stock\) => void/);
+  assert.match(page, /onActionChange: \(action: TradeAction\) => void/);
+  assert.match(page, /key={`\$\{stock\.code\}-\$\{action\}`}/);
+  assert.ok(page.indexOf('className="plan-form"') < page.indexOf('decision-essentials ${'));
+  assert.ok(page.indexOf('decision-essentials ${') < page.indexOf('reason-map automated ${'));
+  assert.match(page, /showBeginnerResults = automationLoading \|\| Boolean\(automatedReview\) \|\| Boolean\(automationError\)/);
+  assert.match(page, /decision-result-pending/);
+  const beginnerSummary = page.slice(page.indexOf('decision-essentials ${'), page.indexOf('reason-map automated ${'));
+  assert.doesNotMatch(beginnerSummary, /Position after plan/);
+  assert.doesNotMatch(beginnerSummary, /If it falls 20%/);
+  assert.match(beginnerSummary, /Two independent AI paths, not a return guarantee/);
+  assert.match(beginnerSummary, /Base-forecast result/);
+  assert.match(beginnerSummary, /decision-essential-forecast attention/);
+  assert.match(page, /Math\.round\(projectedHolding \* weakerBaseForecast\.changePct \/ 100\)/);
+  assert.match(beginnerSummary, /baseForecastResult > 0 \? "\+"/);
 });
 
 test("keeps all six stock research views operable in English",()=>{
