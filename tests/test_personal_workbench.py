@@ -87,7 +87,7 @@ def test_workspace_create_modify_and_order(tmp_path):
 
 
 def test_new_routes_and_mobile_breakpoint_exist():
-    root = Path(__file__).resolve().parents[1] / "sites_frontend" / "app"
+    root = Path(__file__).resolve().parents[1] / "web" / "app"
     for route in ("profile", "opportunity", "workspace", "portfolio", "analysis"):
         assert (root / route / "page.tsx").exists()
     css = (root / "globals.css").read_text(encoding="utf-8")
