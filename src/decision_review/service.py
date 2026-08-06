@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 from .analyzer import SafeReasonAnalyzer
+from .asset_projection import SafeAssetProjection
 from .models import ReasonAnalysis, RiskProfile, TradePlan
 from .retrieval import KnowledgeRetriever
 from .rules import review_rules
@@ -11,8 +12,19 @@ log = logging.getLogger(__name__)
 
 
 class DecisionReviewService:
-    def __init__(self, api_key: str | None = None, model: str = "gpt-5.4-mini"):
-        self.analyzer = SafeReasonAnalyzer(api_key, model, on_error=lambda exc: log.warning("OpenAI理由解析失败，使用规则模式：%s", exc))
+    def __init__(self, api_key: str | None = None, model: str = "gpt-5.4-mini", base_url: str | None = None):
+        self.analyzer = SafeReasonAnalyzer(
+            api_key,
+            model,
+            base_url,
+            on_error=lambda exc: log.warning("OpenAI理由解析失败，使用规则模式：%s", exc),
+        )
+        self.asset_projection = SafeAssetProjection(
+            api_key,
+            model,
+            base_url,
+            on_error=lambda exc: log.warning("AI资产情景失败，使用固定假设：%s", exc),
+        )
         self.retriever = KnowledgeRetriever()
 
     def verify_disclosures(self, claims, result):
@@ -32,6 +44,7 @@ class DecisionReviewService:
             }
         evidence = self.retriever.evidence_for_claims(analysis.claims, plan.reason)
         findings, metrics = review_rules(profile, plan, existing_stock_value, existing_industry_value)
+        metrics["asset_projection"] = self.asset_projection.project(profile, plan, metrics)
         triggered = [x for x in findings if x.triggered]
         high = sum(x.severity == "high" for x in triggered)
         status = "需要重点核对" if high else "还有信息要补充" if triggered else "未发现个人规则冲突"

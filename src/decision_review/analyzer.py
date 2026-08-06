@@ -59,9 +59,10 @@ class RuleReasonAnalyzer:
 class OpenAIReasonAnalyzer:
     """Optional structured-output adapter; falls back without changing the core flow."""
 
-    def __init__(self, api_key: str, model: str = "gpt-5.4-mini"):
+    def __init__(self, api_key: str, model: str = "gpt-5.4-mini", base_url: str | None = None):
         from openai import OpenAI
-        self.client = OpenAI(api_key=api_key)
+
+        self.client = OpenAI(api_key=api_key, base_url=base_url or None)
         self.model = model
 
     def analyze(self, plan: TradePlan) -> ReasonAnalysis:
@@ -80,9 +81,15 @@ class OpenAIReasonAnalyzer:
 
 
 class SafeReasonAnalyzer:
-    def __init__(self, api_key: str | None = None, model: str = "gpt-5.4-mini", on_error: Callable[[Exception], None] | None = None):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model: str = "gpt-5.4-mini",
+        base_url: str | None = None,
+        on_error: Callable[[Exception], None] | None = None,
+    ):
         self.rules = RuleReasonAnalyzer()
-        self.ai = OpenAIReasonAnalyzer(api_key, model) if api_key else None
+        self.ai = OpenAIReasonAnalyzer(api_key, model, base_url) if api_key else None
         self.on_error = on_error
 
     def analyze(self, plan: TradePlan) -> ReasonAnalysis:

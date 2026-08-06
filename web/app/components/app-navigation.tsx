@@ -3,23 +3,30 @@
 import Link from "next/link";
 import {
   Bot, BookOpen, BriefcaseBusiness, FileSearch, Gauge, History, Home, Layers3,
-  MessageSquareWarning, ReceiptText, Settings2, ShieldCheck, SlidersHorizontal, Sparkles,
+  Settings2, ShieldCheck, SlidersHorizontal, Sparkles, type LucideIcon,
 } from "lucide-react";
 import { BrandMark } from "./brand-mark";
 import { pick, useI18n } from "../i18n";
 
-const NAV_GROUPS = [
+type NavigationItem = { href: string; label: string; detail: string; icon: LucideIcon };
+type NavigationGroup = {
+  id: string;
+  href: string;
+  label: string;
+  pageLabel?: string;
+  icon: LucideIcon;
+  paths: readonly string[];
+  children?: readonly NavigationItem[];
+};
+
+const NAV_GROUPS: readonly NavigationGroup[] = [
   { id: "home", href: "/", label: "工作台", icon: Home, paths: ["/"] },
   { id: "research", href: "/analysis?view=research", label: "研究", icon: FileSearch, paths: ["/analysis", "/etf-tool", "/quant"], children: [
     { href: "/analysis?view=research", label: "股票研究", detail: "行情、事件与财务", icon: FileSearch },
     { href: "/etf-tool", label: "ETF 诊断", detail: "持仓穿透与重复暴露", icon: Layers3 },
     { href: "/quant", label: "量化研究", detail: "规则、回测与模拟", icon: Gauge },
   ] },
-  { id: "decision", href: "/opportunity", label: "决策", icon: ShieldCheck, paths: ["/opportunity", "/trade-tool"], children: [
-    { href: "/opportunity", label: "机会检查", detail: "核实消息与跟风风险", icon: MessageSquareWarning },
-    { href: "/analysis?view=decision", label: "交易前验证", detail: "金额、理由与退出条件", icon: ShieldCheck },
-    { href: "/trade-tool", label: "交易复盘", detail: "归因、费用与行为模式", icon: ReceiptText },
-  ] },
+  { id: "decision", href: "/analysis?view=decision", label: "决策", pageLabel: "交易前验证", icon: ShieldCheck, paths: ["/opportunity"] },
   { id: "portfolio", href: "/portfolio", label: "组合", icon: BriefcaseBusiness, paths: ["/portfolio", "/profile"], children: [
     { href: "/portfolio", label: "我的组合", detail: "集中度与行业暴露", icon: BriefcaseBusiness },
     { href: "/profile", label: "我的规则", detail: "个人提醒边界", icon: SlidersHorizontal },
@@ -33,9 +40,9 @@ const NAV_GROUPS = [
   ] },
 ] as const;
 
-export const APP_NAVIGATION = NAV_GROUPS.flatMap((group) => group.children ?? [{ href: group.href, label: group.label, icon: group.icon }]);
+export const APP_NAVIGATION = NAV_GROUPS.flatMap((group): readonly NavigationItem[] => group.children ?? [{ href: group.href, label: group.pageLabel ?? group.label, detail: "", icon: group.icon }]);
 
-export function AppNavigation({ activePath, activeHref, userName, syncLabel }: { activePath: string; activeHref?: string; userName?: string; syncLabel?: string }) {
+export function AppNavigation({ activePath, activeHref, userName, syncLabel, decisionHref, onNavigate }: { activePath: string; activeHref?: string; userName?: string; syncLabel?: string; decisionHref?: string; onNavigate?: (href: string) => void }) {
   const { isEnglish, locale, setLocale } = useI18n();
   const groupLabel: Record<string, [string, string]> = {
     home: ["工作台", "Workspace"], research: ["研究", "Research"], decision: ["决策", "Decisions"],
@@ -45,9 +52,6 @@ export function AppNavigation({ activePath, activeHref, userName, syncLabel }: {
     "/analysis?view=research": ["股票研究", "Stock research", "行情、事件与财务", "Prices, events and financials"],
     "/etf-tool": ["ETF 诊断", "ETF diagnosis", "持仓穿透与重复暴露", "Look-through holdings and overlap"],
     "/quant": ["量化研究", "Quant research", "规则、回测与模拟", "Rules, backtests and simulation"],
-    "/opportunity": ["机会检查", "Claim check", "核实消息与跟风风险", "Verify claims and crowding risk"],
-    "/analysis?view=decision": ["交易前验证", "Pre-trade review", "金额、理由与退出条件", "Size, rationale and exit conditions"],
-    "/trade-tool": ["交易复盘", "Trade review", "归因、费用与行为模式", "Attribution, costs and behavior"],
     "/portfolio": ["我的组合", "My portfolio", "集中度与行业暴露", "Concentration and sector exposure"],
     "/profile": ["我的规则", "My rules", "个人提醒边界", "Personal review boundaries"],
     "/analysis?view=history": ["历史记录", "Review history", "复核过去的决定", "Revisit previous decisions"],
@@ -58,7 +62,6 @@ export function AppNavigation({ activePath, activeHref, userName, syncLabel }: {
   };
   const groupDetail: Record<string, [string, string]> = {
     research: ["理解市场和标的", "Understand markets and assets"],
-    decision: ["核实依据再行动", "Verify the basis before acting"],
     portfolio: ["管理持仓与规则", "Manage holdings and rules"],
     assistant: ["让系统替你组织任务", "Let the system organize the work"],
   };
@@ -69,12 +72,14 @@ export function AppNavigation({ activePath, activeHref, userName, syncLabel }: {
       <button className={locale === "en" ? "active" : ""} onClick={() => setLocale("en")} aria-pressed={locale === "en"}>EN</button>
     </div>
     <nav aria-label={pick(isEnglish, "工作台导航", "Workspace navigation")} data-guide="primary-nav">{NAV_GROUPS.map((group) => {
-      const selected = group.paths.includes(activePath as never) || Boolean(activeHref && group.children?.some((item) => item.href === activeHref));
+      const selected = group.href === activeHref || group.paths.includes(activePath) || Boolean(activeHref && group.children?.some((item) => item.href === activeHref));
       const Icon = group.icon;
       const pair = groupLabel[group.id] ?? [group.label, group.label];
       const label = pick(isEnglish, pair[0], pair[1]);
+      const directPageLabel = group.id === "decision" ? pick(isEnglish, "交易前验证", "Pre-trade review") : label;
+      const primaryHref = group.id === "decision" && decisionHref ? decisionHref : group.href;
       return <div className={`nav-group ${selected ? "active" : ""}`} key={group.id}>
-        <Link href={group.href} className="nav-primary" aria-current={selected ? "page" : undefined}><Icon /><span>{label}</span></Link>
+        <Link href={primaryHref} className="nav-primary" aria-label={directPageLabel} title={directPageLabel} aria-current={selected ? "page" : undefined} data-direct={group.children ? undefined : "true"} onClick={() => onNavigate?.(primaryHref)}><Icon /><span>{label}</span></Link>
         {group.children && <div className="nav-submenu" role="menu" aria-label={`${label} ${pick(isEnglish, "子菜单", "menu")}`}><header><Icon /><span><strong>{label}</strong><small>{isEnglish ? (groupDetail[group.id]?.[1] ?? "Organize the current task") : (groupDetail[group.id]?.[0] ?? "组织当前任务")}</small></span></header>{group.children.map((item) => { const ChildIcon = item.icon; const itemPath=item.href.split("?")[0]; const itemSelected=activeHref ? activeHref===item.href : activePath===itemPath; const copy=itemCopy[item.href]??[item.label,item.label,item.detail,item.detail]; return <Link href={item.href} key={item.href} role="menuitem" className={itemSelected?"selected":undefined} aria-current={itemSelected?"page":undefined}><ChildIcon /><span><strong>{isEnglish?copy[1]:copy[0]}</strong><small>{isEnglish?copy[3]:copy[2]}</small></span></Link>; })}</div>}
       </div>;
     })}</nav>
