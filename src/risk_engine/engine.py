@@ -97,7 +97,7 @@ class RiskEngine:
         return [
             self._result("debt", "资产负债率升高", "high" if last.debt_ratio > 80 else "medium" if debt_hit else "low", debt_hit, "负债率较高或比三个报告期前明显升高。" if debt_hit else "未达到预设风险阈值。", f"负债率{last.debt_ratio:.1f}%，变化{debt_change:+.1f}个百分点", d),
             self._result("profit", "净利润恶化", "high" if len(profits) and profits.iloc[-1] < 0 else "medium" if profit_hit else "low", profit_hit, "净利润连续下降或由盈转亏。" if profit_hit else "最近净利润未触发连续恶化规则。", f"最近净利润：{last.net_profit/1e8:.2f}亿元", d),
-            self._result("cash", "经营现金流偏弱", "medium" if cash_hit else "low", cash_hit, "经营现金流低于净利润的50%，需结合行业和报告附注核实。" if cash_hit else "经营现金流与净利润关系未触发规则。", f"经营现金流/净利润：{ratio:.2f}" if pd.notna(ratio) else "比值数据不足", d),
+            self._result("cash", "经营现金流偏弱", "medium" if cash_hit else "unknown" if pd.isna(ratio) else "low", cash_hit or pd.isna(ratio), "经营现金流低于净利润的50%，需结合行业和报告附注核实。" if cash_hit else "缺少经营现金流金额，无法判断。" if pd.isna(ratio) else "经营现金流与净利润关系未触发规则。", f"经营现金流/净利润：{ratio:.2f}" if pd.notna(ratio) else "经营现金流金额不足（不会用百分比字段代替）", d),
         ]
 
 

@@ -17,6 +17,7 @@ class ParsedTradeRequest:
     amount: float
     reason: str
     invalidation: str = ""
+    holding_period: str = ""
     unclear_items: list[str] = field(default_factory=list)
 
 
@@ -35,11 +36,20 @@ def _chinese_number(value: str) -> float | None:
 
 
 def _extract_amount(text: str) -> float | None:
-    arabic = re.search(r"(?<!\d)(\d+(?:\.\d+)?)\s*(万|千|元)?", text)
+    # Prefer an explicit money unit. A six-digit stock code must never become
+    # the planned amount merely because it appears before the real amount.
+    arabic = re.search(r"(?<!\d)(\d+(?:\.\d+)?)\s*(万|千|元)(?!\d)", text)
     if arabic:
         value = float(arabic.group(1))
-        unit = arabic.group(2) or "元"
-        return value * {"万": 10_000, "千": 1_000, "元": 1}[unit]
+        return value * {"万": 10_000, "千": 1_000, "元": 1}[arabic.group(2)]
+    currency = re.search(r"(?:¥|￥)\s*(\d+(?:\.\d+)?)", text)
+    if currency:
+        return float(currency.group(1))
+    for candidate in re.findall(r"(?<!\d)(\d+(?:\.\d+)?)(?!\d)", text):
+        integer = candidate.split(".", 1)[0]
+        if len(integer) == 6 and integer[0] in "03689":
+            continue
+        return float(candidate)
     chinese = re.search(r"([零一二两三四五六七八九十]+)\s*(万|千)", text)
     if chinese:
         value = _chinese_number(chinese.group(1))
@@ -70,6 +80,11 @@ def parse_trade_request(text: str, default_action: str = "买入", default_amoun
     reason = reason_match.group(1).strip("。；;，, ") if reason_match else text
     invalidation_match = re.search(r"(?:如果|除非)(.+?)(?:就|则)(?:不买|不再|卖出|停止|放弃|说明判断错)", text)
     invalidation = invalidation_match.group(1).strip("。；;，, ") if invalidation_match else ""
+    holding_match = re.search(
+        r"(?:准备|预计|计划|打算)?\s*持有\s*(?:大约|约)?\s*(长期|中期|短期|半年|一年|两年|三年|\d+\s*(?:天|周|个月|年))",
+        text,
+    )
+    holding_period = holding_match.group(1).replace(" ", "") if holding_match else ""
     if not invalidation:
         unclear.append("还没有说明什么情况代表原判断可能不成立")
 
@@ -78,5 +93,6 @@ def parse_trade_request(text: str, default_action: str = "买入", default_amoun
         amount=float(amount),
         reason=reason,
         invalidation=invalidation,
+        holding_period=holding_period,
         unclear_items=unclear,
     )

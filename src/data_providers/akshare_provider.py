@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from datetime import date
 from functools import lru_cache
+from concurrent.futures import ThreadPoolExecutor
 import time
 
 import pandas as pd
 
-from .base import DataResult, MarketDataProvider, ensure_announcement_schema, ensure_financial_schema, ensure_news_schema, ensure_price_schema, normalize_stock_code
+from .base import DataResult, MarketDataProvider, ensure_announcement_schema, ensure_financial_schema, ensure_financial_statement_schema, ensure_news_schema, ensure_price_schema, normalize_stock_code
 
 
 class AkshareProvider(MarketDataProvider):
@@ -68,30 +69,85 @@ class AkshareProvider(MarketDataProvider):
     def get_quote(self, code: str) -> DataResult:
         code = normalize_stock_code(code)
         name = code
+        industry = "数据不足"
+        list_date = None
         try:
             info = self._retry(self.ak.stock_individual_info_em, symbol=code, _attempts=1)
             if {"item", "value"}.issubset(info.columns):
                 values = dict(zip(info["item"].astype(str), info["value"]))
                 name = str(values.get("股票简称") or values.get("股票名称") or code)
+                industry = str(values.get("行业") or values.get("所属行业") or "数据不足")
+                list_date = values.get("上市时间") or values.get("上市日期")
         except Exception:
-            pass
+            try:
+                profile = self._retry(self.ak.stock_profile_cninfo, symbol=code, _attempts=1)
+                if not profile.empty:
+                    row = profile.iloc[0]
+                    name = str(row.get("A股简称") or code)
+                    industry = str(row.get("所属行业") or "数据不足")
+                    list_date = row.get("上市日期")
+            except Exception:
+                pass
         hist = self.get_price_history(code).data
         if len(hist) < 2:
             raise RuntimeError("该股票行情数据不足")
         last, prev = hist.iloc[-1], hist.iloc[-2]
-        return DataResult({"code": code, "name": name, "industry": "数据不足", "price": float(last.close), "change_pct": float((last.close / prev.close - 1) * 100), "date": last.date.date(), "pe": None, "pb": None, "market_cap": None}, self.name)
+        return DataResult({"code": code, "name": name, "industry": industry, "price": float(last.close), "change_pct": float((last.close / prev.close - 1) * 100), "date": last.date.date(), "list_date": list_date, "pe": None, "pb": None, "market_cap": None}, self.name)
 
     @lru_cache(maxsize=128)
     def get_company_profile(self, code: str) -> DataResult:
         quote = self.get_quote(code).data
-        return DataResult({**quote, "list_date": None, "is_st": "ST" in quote["name"], "data_date": quote["date"]}, self.name, message="部分基础资料暂缺")
+        return DataResult({**quote, "is_st": "ST" in quote["name"], "data_date": quote["date"]}, self.name, message="部分估值资料暂缺")
 
     @lru_cache(maxsize=128)
     def get_financial_indicators(self, code: str) -> DataResult:
         code = normalize_stock_code(code)
         raw = self._retry(self.ak.stock_financial_analysis_indicator, symbol=code, start_year=str(date.today().year - 4), _attempts=1)
-        mapping = {"日期": "report_date", "营业总收入": "revenue", "净利润": "net_profit", "主营业务收入增长率(%)": "revenue_yoy", "净利润增长率(%)": "profit_yoy", "净资产收益率(%)": "roe", "资产负债率(%)": "debt_ratio", "经营现金净流量对销售收入比率(%)": "operating_cash_flow"}
+        mapping = {"日期": "report_date", "营业总收入": "revenue", "净利润": "net_profit", "主营业务收入增长率(%)": "revenue_yoy", "净利润增长率(%)": "profit_yoy", "净资产收益率(%)": "roe", "资产负债率(%)": "debt_ratio", "经营现金净流量对销售收入比率(%)": "operating_cash_flow_sales_ratio"}
         return DataResult(ensure_financial_schema(raw.rename(columns=mapping)), self.name)
+
+    @lru_cache(maxsize=128)
+    def get_financial_statements(self, code: str) -> DataResult:
+        code = normalize_stock_code(code)
+        symbol = f"sh{code}" if code.startswith("6") else f"sz{code}" if code.startswith(("0", "3")) else f"bj{code}"
+        def statement(name: str):
+            return self._retry(self.ak.stock_financial_report_sina, stock=symbol, symbol=name, _attempts=1)
+
+        # The three statements are independent public requests. Fetching them
+        # concurrently keeps the user-facing diagnosis within a reasonable wait.
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            balance_future = executor.submit(statement, "资产负债表")
+            income_future = executor.submit(statement, "利润表")
+            cashflow_future = executor.submit(statement, "现金流量表")
+            balance = balance_future.result()
+            income = income_future.result()
+            cashflow = cashflow_future.result()
+
+        balance = balance.rename(columns={
+            "报告日": "report_date", "应收账款": "accounts_receivable", "存货": "inventory",
+            "资产总计": "total_assets", "负债合计": "total_liabilities",
+        })
+        income = income.rename(columns={
+            "报告日": "report_date", "营业总收入": "revenue", "净利润": "net_profit",
+        })
+        cashflow = cashflow.rename(columns={
+            "报告日": "report_date", "经营活动产生的现金流量净额": "operating_cash_flow",
+        })
+        selected = []
+        for frame, columns in (
+            (income, ["report_date", "revenue", "net_profit"]),
+            (cashflow, ["report_date", "operating_cash_flow"]),
+            (balance, ["report_date", "accounts_receivable", "inventory", "total_assets", "total_liabilities"]),
+        ):
+            selected.append(frame[[column for column in columns if column in frame.columns]].copy())
+        merged = selected[0]
+        for frame in selected[1:]:
+            merged = merged.merge(frame, on="report_date", how="outer")
+        return DataResult(
+            ensure_financial_statement_schema(merged),
+            "AKShare（新浪财务报表）",
+            message="财务报表字段按同一报告日合并；季度累计值不可直接与单季度值比较。",
+        )
 
     def get_market_indices(self) -> DataResult:
         rows = []

@@ -4,13 +4,14 @@ import json
 import sqlite3
 import csv
 import io
+import os
 from pathlib import Path
 from typing import Any
 
 
 class Database:
-    def __init__(self, path: str | Path = "data/anshin.db"):
-        self.path = Path(path)
+    def __init__(self, path: str | Path | None = None):
+        self.path = Path(path or os.getenv("ANXIN_DB_PATH", "data/anshin.db"))
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.initialize()
 

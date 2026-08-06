@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>机会检查｜安心看股</title>
+  <link rel="stylesheet" href="/static/opportunity-check/style.css">
+</head>
+<body>
+  <header class="bar"><a href="/">安心看股</a><span>机会检查</span><a href="/docs">API 文档</a></header>
+  <main>
+    <section class="intro"><span>社交内容反跟风助手</span><h1>先拆开这条说法，再决定是否行动</h1><p>只识别可观察的语言、证据和仓位特征，不判断作者动机，也不预测涨跌。</p></section>
+    <section class="panel input-panel">
+      <label>你看到的原话<textarea id="sourceText" rows="6">某科技股马上翻倍，今天不上车就晚了，已经有大资金进场。</textarea></label>
+      <div class="fields"><label>股票 / ETF 代码<input id="assetCode" value="688981" maxlength="6"></label><label>计划金额<input id="amount" type="number" value="30000" min="0"></label></div>
+      <button id="analyze">检查内容特征</button><p class="privacy">输入只发送到当前安心看股服务；服务端不记录原文，也不会自动转发给第三方模型。</p>
+    </section>
+    <section id="result" class="results" hidden>
+      <article class="panel score"><div><span>可观察跟风风险</span><strong id="score">—</strong><small id="level">—</small></div><ul id="signals"></ul></article>
+      <article class="panel"><h2>继续做交易前检查</h2><div class="fields"><label>预计持有多久<input id="period" placeholder="例如：3个月"></label><label>判断失效条件<input id="exit" placeholder="例如：下一期现金流没有改善"></label></div><button id="precheck">检查计划</button></article>
+      <article class="panel" id="precheckResult" hidden><h2>需要复核的项目</h2><div id="checks"></div></article>
+    </section>
+  </main>
+  <footer>本工具仅用于投资信息、持仓分析和交易复盘参考，不构成任何投资建议、收益承诺或买卖建议。</footer>
+  <script src="/static/opportunity-check/script.js"></script>
+</body>
+</html>

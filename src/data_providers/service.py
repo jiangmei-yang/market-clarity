@@ -64,6 +64,7 @@ class DataService:
                     match = cached.data[cached.data.code.astype(str).str.zfill(6) == code]
                     if not match.empty:
                         return code, str(match.iloc[0]["name"])
+                    raise ValueError(f"没有在最近的 A 股证券名单中找到代码 {code}，请检查代码后重试。")
                 return code, code
             result = self.get_stock_list()
             rows = result.data
@@ -155,6 +156,9 @@ class DataService:
 
     @lru_cache(maxsize=128)
     def get_financial_indicators(self, code: str): return self._call("get_financial_indicators", code)
+
+    @lru_cache(maxsize=128)
+    def get_financial_statements(self, code: str): return self._call("get_financial_statements", code)
 
     @lru_cache(maxsize=128)
     def get_company_profile(self, code: str): return self._call("get_company_profile", code)

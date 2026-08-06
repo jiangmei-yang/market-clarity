@@ -5,7 +5,7 @@ from datetime import date, datetime
 import numpy as np
 import pandas as pd
 
-from .base import DataResult, MarketDataProvider, ensure_announcement_schema, ensure_financial_schema, ensure_news_schema, ensure_price_schema, normalize_stock_code
+from .base import DataResult, MarketDataProvider, ensure_announcement_schema, ensure_financial_schema, ensure_financial_statement_schema, ensure_news_schema, ensure_price_schema, normalize_stock_code
 
 
 STOCKS = [
@@ -68,9 +68,25 @@ class DemoDataProvider(MarketDataProvider):
             "revenue_yoy": pd.Series(revenue).pct_change().to_numpy() * 100,
             "profit_yoy": pd.Series(profit).pct_change().to_numpy() * 100,
             "roe": rng.uniform(8, 19, 8), "debt_ratio": rng.uniform(30, 52, 8),
-            "operating_cash_flow": cash,
+            "operating_cash_flow": cash, "operating_cash_flow_sales_ratio": cash / revenue * 100,
         }))
         return DataResult(frame, self.name, is_demo=True)
+
+    def get_financial_statements(self, code: str) -> DataResult:
+        indicators = self.get_financial_indicators(code).data
+        rng = np.random.default_rng(int(normalize_stock_code(code)) % 3571)
+        assets = np.linspace(130, 180, len(indicators)) * 1e9
+        frame = ensure_financial_statement_schema(pd.DataFrame({
+            "report_date": indicators.report_date,
+            "revenue": indicators.revenue,
+            "net_profit": indicators.net_profit,
+            "operating_cash_flow": indicators.operating_cash_flow,
+            "accounts_receivable": indicators.revenue * rng.uniform(.04, .12, len(indicators)),
+            "inventory": indicators.revenue * rng.uniform(.10, .25, len(indicators)),
+            "total_assets": assets,
+            "total_liabilities": assets * indicators.debt_ratio.to_numpy() / 100,
+        }))
+        return DataResult(frame, self.name, is_demo=True, message="当前为固定模拟财务数据，不代表真实公司财报。")
 
     def get_market_indices(self) -> DataResult:
         rows = []

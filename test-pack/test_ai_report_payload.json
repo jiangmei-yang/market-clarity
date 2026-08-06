@@ -1,0 +1,14 @@
+{
+  "total_etfs": 3,
+  "covered_stocks": 12,
+  "main_exposures": ["沪深300", "港股创新药", "医药"],
+  "overlap_risk": "中",
+  "risk_tags": ["医药行业集中", "港股风险", "高波动"],
+  "stock_overlap": [{"stock_name": "中国生物制药", "etfs": ["港股创新药ETF"]}],
+  "total_return": -0.085,
+  "main_drivers": [{"name": "医药创新药", "impact": -0.062}, {"name": "港股互联网", "impact": -0.023}],
+  "behavior_flags": ["单一医药方向暴露较高", "高波动ETF占比偏高"],
+  "suggestion": "建议关注单一行业暴露和交易频率。",
+  "style": "简洁中性",
+  "max_tokens": 300
+}

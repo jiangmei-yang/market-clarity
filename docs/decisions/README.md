@@ -62,3 +62,7 @@ NNNN-short-title.md
 - [ADR-0001：产品是研究之上的决策层](0001-decision-layer-product-boundary.md)
 - [ADR-0002：桌面网页为当前正式交付面](0002-desktop-web-primary-surface.md)
 - [ADR-0003：决策验证采用可追溯证据状态](0003-traceable-decision-validation.md)
+- [ADR-0004：受控 AI 策略研究 Harness 与版本化 DSL](0004-bounded-factor-research-harness.md)
+- [ADR-0005：可搜索 A 股样本与有边界的自动多轮研究](0005-searchable-a-share-universe-and-bounded-auto-research.md)
+- [ADR-0006：策略研究室作为课程证据 MVP](0006-strategy-lab-course-mvp.md)
+- [ADR-0007：锁定历史按完整研究上下文封存](0007-strategy-lab-locked-context.md)

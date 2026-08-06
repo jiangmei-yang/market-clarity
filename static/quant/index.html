@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>量化工作台 · 安心看股</title>
+  <link rel="stylesheet" href="/static/quant/style.css">
+</head>
+<body>
+  <aside class="rail">
+    <a class="brand" href="/"><span>安</span><b>安心看股</b></a>
+    <nav>
+      <a href="/">工作台</a><a href="/workspace">研究</a><a href="/etf-tool">ETF</a><a class="active" href="/quant">量化</a><a href="/trade-tool">复盘</a>
+    </nav>
+    <p>规则可解释<br>结果可复核</p>
+  </aside>
+  <main>
+    <header class="topbar">
+      <div><h1>量化工作台</h1><p>把投资想法变成可以逐条核对的规则</p></div>
+      <div class="status"><i></i><span><b>演示研究环境</b><small>数据截至 2026-07-21</small></span></div>
+    </header>
+    <section class="workspace">
+      <nav class="tabs" aria-label="量化工具">
+        <button class="active" data-tab="rules">我的规则</button><button data-tab="screen">自然语言选股</button><button data-tab="validate">策略验证</button><button data-tab="risk">组合风险</button><button data-tab="alerts">规则提醒</button>
+      </nav>
+
+      <section class="panel active" id="rules">
+        <div class="split">
+          <div class="editor">
+            <span class="section-label">规则草稿</span>
+            <h2>用你平时说话的方式描述</h2>
+            <p>AI 只负责整理条件。规则不会自动生效，数值也不会由模型计算。</p>
+            <textarea id="ruleText">我想找利润增长稳定、经营现金流为正、负债率低、最近没有暴涨的公司。</textarea>
+            <div class="examples"><button data-example="ROE大于10%、资产负债率低于55%、经营现金流为正">质量条件</button><button data-example="PE低于行业中位数、近20日涨幅不超过15%">估值与价格</button><button data-example="利润增长大于12%，不希望与当前持仓重复">避免重复</button></div>
+            <button class="primary" id="parseRule">整理成规则</button>
+          </div>
+          <div class="rule-preview" id="rulePreview">
+            <div class="empty"><b>规则会在这里逐条展开</b><span>你可以检查指标、阈值、口径和仍需确认的问题。</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="screen">
+        <div class="section-head"><div><span class="section-label">条件核对</span><h2>哪些标的满足你的规则</h2><p>不使用综合评分。每个结论都保留数据日期、定义和来源。</p></div><button class="primary" id="runScreen">开始筛选</button></div>
+        <div class="notice">当前结果基于固定演示股票池，不代表全市场结果。</div>
+        <div id="screenResult" class="result-area"><div class="empty"><b>确认规则后开始筛选</b><span>结果将区分通过、不通过与数据缺失。</span></div></div>
+      </section>
+
+      <section class="panel" id="validate">
+        <div class="section-head"><div><span class="section-label">历史检验</span><h2>先看稳健性，再看收益</h2><p>拆开样本内外、交易成本、参数变化和最大回撤。</p></div><button class="primary" id="runValidate">运行验证</button></div>
+        <div class="validation-grid">
+          <article class="metric-wide"><span>样本外结论</span><b>等待验证</b><p>不会用历史结果承诺未来收益。</p></article>
+          <article><span>最大回撤</span><b>—</b><small>等待计算</small></article><article><span>成本影响</span><b>—</b><small>等待计算</small></article><article><span>参数敏感性</span><b>—</b><small>等待计算</small></article>
+        </div>
+        <div class="audit-strip"><b>检验必须说明</b><span>复权方式</span><span>交易成本</span><span>样本外区间</span><span>幸存者偏差</span><span>未来数据泄漏</span></div>
+      </section>
+
+      <section class="panel" id="risk">
+        <div class="section-head"><div><span class="section-label">组合敏感性</span><h2>风险来自哪里，冲击会传到哪里</h2><p>按你的持仓金额计算暴露，不预测市场是否会发生冲击。</p></div><button class="primary" id="runRisk">计算情景</button></div>
+        <div class="risk-layout">
+          <div class="portfolio-input"><label>持仓 1<input id="p1" value="600183,生益科技,80000,科技"></label><label>持仓 2<input id="p2" value="688981,中芯国际,60000,科技"></label><label>持仓 3<input id="p3" value="600519,贵州茅台,60000,消费"></label><label>情景<select id="scenario"><option value="科技,-10">科技行业下跌 10%</option><option value="消费,-10">消费行业下跌 10%</option></select></label></div>
+          <div id="riskResult" class="risk-visual"><div class="empty"><b>输入持仓后计算</b><span>你会看到行业暴露、集中度和情景影响口径。</span></div></div>
+        </div>
+      </section>
+
+      <section class="panel" id="alerts">
+        <div class="section-head"><div><span class="section-label">规则变化</span><h2>提醒你复核，不替你下结论</h2><p>只有已确认的规则会生成提醒。</p></div><button class="primary" id="runAlerts">检查变化</button></div>
+        <div id="alertResult" class="alert-list"><div class="empty"><b>还没有规则提醒</b><span>运行检查后，仅显示不满足或缺失的数据项。</span></div></div>
+      </section>
+    </section>
+  </main>
+  <script src="/static/quant/script.js"></script>
+</body>
+</html>

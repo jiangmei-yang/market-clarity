@@ -93,7 +93,8 @@ def build_market_context(
         "updated_at": updated_at.isoformat() if hasattr(updated_at, "isoformat") else str(updated_at),
         "is_demo": bool(is_demo), "message": message,
         "metrics": {
-            "latest_close": _number(current), "return_5d": _period_return(close, 5),
+            "latest_close": _number(current), "return_1d": _period_return(close, 1),
+            "return_5d": _period_return(close, 5),
             "return_20d": _period_return(close, 20), "return_60d": _period_return(close, 60),
             "ma20_gap": ma_gap, "rsi14": rsi, "volume_ratio_20d": volume_ratio,
             "distance_from_60d_high": high_gap, "annualized_volatility_20d": volatility,
