@@ -1,7 +1,10 @@
+import pandas as pd
 from fastapi.testclient import TestClient
 
+import api
 from api import _PUBLIC_SOURCE_CACHE, _public_sources, app
 from src.data_providers import DataService
+from src.data_providers.base import DataResult
 from src.services import StockAnalysisService
 
 
@@ -57,6 +60,26 @@ def test_stock_evidence_contract(monkeypatch):
     }
     assert body["feed"]["data_mode"] in {"live", "mixed", "demo"}
     assert all({"title", "source", "category", "url"}.issubset(item) for item in body["feed"]["items"])
+
+
+def test_formal_evidence_api_rejects_demo_only_fallback(monkeypatch):
+    class DemoOnlyMarket:
+        use_demo = False
+
+        def resolve_stock(self, code):
+            return code, "测试股票"
+
+        def get_announcements(self, code):
+            return DataResult(pd.DataFrame(), "演示公告", is_demo=True)
+
+        def get_stock_news(self, code):
+            return DataResult(pd.DataFrame(), "演示新闻", is_demo=True)
+
+    _PUBLIC_SOURCE_CACHE.clear()
+    monkeypatch.setattr(api, "DataService", DemoOnlyMarket)
+    response = client.get("/stocks/600519/evidence", params={"reason": "朋友说公司有大订单"})
+    assert response.status_code == 404
+    assert "演示资料不会进入正式研究" in response.json()["detail"]
 
 
 def test_public_source_cache_reuses_provider_data_without_reason(monkeypatch):
@@ -177,3 +200,34 @@ def test_decision_parse_and_review_api():
     result = reviewed.json()
     assert result["metrics"]["post_stock_pct"] == 42
     assert result["status"] == "需要重点核对"
+
+
+def test_quant_parse_requires_confirmation_before_run():
+    parsed = client.post("/v1/quant/parse", json={
+        "question": "业绩增长、估值不高的股票，之后三个月通常表现怎么样？",
+        "stock_code": "600183",
+    })
+    assert parsed.status_code == 200
+    hypothesis = parsed.json()["hypothesis"]
+    assert hypothesis["confirmed_at"] is None
+    blocked = client.post("/v1/quant/run", json=hypothesis)
+    assert blocked.status_code == 409
+    assert "确认" in blocked.json()["detail"]
+
+
+def test_quant_api_returns_auditable_demo_result_without_ai_key(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    hypothesis = client.post("/v1/quant/parse", json={
+        "question": "营收增长超过15%后，三个月表现是否稳定？",
+        "stock_code": "600183",
+    }).json()["hypothesis"]
+    hypothesis["confirmed_at"] = "2026-07-22T10:00:00+00:00"
+    response = client.post("/v1/quant/run", json=hypothesis)
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert result["data_mode"] == "demo"
+    assert result["engine_version"] == "quant-demo-1.0.0"
+    assert result["in_sample_metrics"]["sample_count"] > 0
+    assert result["out_of_sample_metrics"]["sample_count"] > 0
+    assert result["conclusion"] in {"提供有限支持", "削弱当前判断", "证据不足"}
+    assert "历史结果" not in result["conclusion"]

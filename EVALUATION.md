@@ -6,13 +6,14 @@
 
 ## North Star Metric
 
-**每周完成的“有证据检查”次数（Weekly Evidence-backed Checks）**
+**每周完成的“交易前有效审查”次数（Weekly Completed Pre-trade Reviews）**
 
 一次有效检查必须同时满足：
 
-1. 用户读到一分钟总结；
-2. 查看至少一条风险证据；
-3. 采取“加入观察、记录判断或主动离开”中的一个明确动作。
+1. 用户确认系统对交易计划的结构化理解；
+2. 查看至少一项金额影响或个人规则冲突；
+3. 对未核实信息或失效条件完成核对；
+4. 明确选择维持、修改或稍后再看。
 
 单纯打开页面或刷新行情不计入。
 
@@ -47,10 +48,11 @@
 
 - `home_viewed`
 - `check_started`
-- `summary_viewed`
-- `risk_evidence_opened`
-- `watch_added`
-- `journal_started`
+- `plan_confirmed`
+- `review_viewed`
+- `evidence_opened`
+- `plan_revised`
+- `decision_deferred`
 - `check_completed`
 - `demo_started`
 
@@ -62,6 +64,22 @@
 - “建议买入/卖出”误解率不能上升。
 - 数据过期或演示模式误认真实行情必须接近 0。
 - 增加页面停留时间不是成功；若理解相同，时间越短越好。
+
+## 可重复运行的 AI / 规则评估包
+
+产品指标之外，仓库包含一个不需要 API Key、网络或实时行情的确定性评估包：
+
+```bash
+python scripts/run_evaluation.py
+```
+
+测试集位于 `evaluation/golden_cases.json`，当前包含：
+
+- 20 个 Golden Cases：理由分类、社交信息、FOMO/亏损追逐信号、仓位与金额边界、失效条件、下跌情景、正式披露与媒体证据分级；
+- 3 个幻觉防护案例：无关公告不能支持传闻、市场观点不能升级为正式事实、空检索结果必须回答“资料不足”；
+- 明确检查自伤语句只进入支持性分流，不继续提供股票分析；一般焦虑表达不会被做成心理诊断。
+
+这组测试评估的是产品承诺与安全边界，不是股票涨跌预测准确率。接入 OpenAI 后还应对同一批样例运行 LLM 模式，并人工核对引用是否都落在返回的 `evidence_indices` 内。
 
 ## Go / Iterate / Stop 标准
 
@@ -76,4 +94,3 @@
 ### Stop or reposition
 
 用户认为现有行情软件已足够；没有人在真实决策时复访；或价值只在课堂演示成立。此时停止加功能，转向“家庭投资沟通/复盘工具”或结束项目。
-

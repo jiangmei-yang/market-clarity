@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AI 模型设置｜安心看股</title><link rel="stylesheet" href="/static/ai-settings/style.css"></head>
+<body>
+  <header class="top"><a href="/">安心看股</a><nav><a href="/workspace">工作台设置</a><a href="/opportunity">机会检查</a></nav></header>
+  <main>
+    <section class="heading"><div><span>AI 模型设置</span><h1>选择解释与复盘使用的模型</h1><p>行情、盈亏和仓位始终由确定性代码计算。模型只负责解释与整理。</p></div><aside>API Key 只保存在服务器</aside></section>
+    <p id="status" role="status"></p>
+    <section id="providers" class="providers" aria-live="polite"></section>
+    <aside class="fallback-note">个人选择优先于平台默认 HKGAI。真实模型不可用时，系统会明确回退到 Mock / 本地规则模式。</aside>
+  </main>
+  <script src="/static/ai-settings/script.js"></script>
+</body>
+</html>

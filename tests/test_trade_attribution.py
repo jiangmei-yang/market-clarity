@@ -43,7 +43,7 @@ def test_trade_api_text_ai_and_multipart_upload():
     ai = client.post("/attribution/run_with_ai_report", json={"file_content": CSV, "delimiter": ","})
     assert ai.status_code == 200
     assert ai.json()["model_used"] == "mock"
-    assert "不构成投资建议" in ai.json()["ai_report"]
+    assert "不构成任何投资建议" in ai.json()["ai_report"]
 
     legacy_ai = client.post("/report/generate_ai", json={
         "total_etfs": 3, "covered_stocks": 12, "main_exposures": ["沪深300", "港股创新药", "医药"],
@@ -53,7 +53,7 @@ def test_trade_api_text_ai_and_multipart_upload():
     assert legacy_ai.status_code == 200
     assert "港股创新药" in legacy_ai.json()["report"]
     assert "-8.50%" in legacy_ai.json()["report"]
-    assert "本工具仅用于持仓分析和交易复盘参考，不构成投资建议" in legacy_ai.json()["report"]
+    assert "本工具仅用于持仓分析和交易复盘参考，不构成任何投资建议" in legacy_ai.json()["report"]
 
     upload = client.post(
         "/trade/upload",

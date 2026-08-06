@@ -37,6 +37,17 @@
 
 ## MVP 已实现功能
 
+- 个人投资工作台：新版 Sites 首页以“我看到一个机会 / 我的投资规则 / 看看我的组合”为三个主入口，并可切换和编辑多个工作台。
+- 自然语言个人规则：把普通中文整理为结构化边界，明确显示假设和待确认项；只有用户确认后才保存并参与后续检查。
+- 社交内容反跟风检查：识别情绪煽动、时间压力、收益展示、权威暗示、证据和风险披露，不判断作者动机，也不预测价格。
+- 交易前确定性检查：按个人上限计算计划后的单一资产与行业占比，检查理由、期限、失效条件、追涨、重复暴露和杠杆冲突。
+- 个性化模块：提供长期基本面、ETF 配置、波段交易、新手学习、社交风险检查和自定义六种模板，支持显示、隐藏、排序、密度和提醒频率。
+- 自然语言工作台：一句话可以调整策略、关注行业、模块顺序、主题、字体、动效、信息密度、解释难度和提醒频率；系统先生成短期预览，确认后才应用，并支持取消、撤销和恢复默认。
+- 主题与阅读：提供安静浅色、纸张阅读、清透蓝、深色专注和高对比五种预设；品牌色与涨跌色分离，并支持 reduced-motion。
+- AI 模型连接：`/ai-settings` 管理 Mock、HKGAI、DeepSeek 和 OpenAI-compatible 元数据；密钥只允许加密保存或引用服务器环境变量，页面永不回显明文。
+- 全局 AI 助手：应用根布局中的常驻右栏会随页面更新最小上下文，但不会因切换工作台、ETF 诊断、机会检查或交易复盘而清空会话。界面配置先展示独立预览卡，确认后才应用，并支持取消与撤销；草稿和对话只保存在当前浏览器标签页，API Key 不进入浏览器存储。
+- 配置审计：只记录命令编号、意图、结构化变更、状态和确认时间，不把完整命令、交易内容、截图或密钥写入审计记录。
+- 金融指标白话解释：`/education/explain` 只解释系统提供的值和比较基准；缺少数据时明确显示“暂无数据”。
 - 首页工作台：首屏展示三大指数、股票分析与交易前检查两个核心入口，并汇总持仓、个人规则和最近一次检查。
 - 智能研判驾驶舱：把市场温度、趋势结构、量价关系、财务质量、主要风险和关键位置集中在一个页面。
 - 平衡研究快照：强制并列展示支持证据、反方证据和待核实信息，不生成综合买卖评分。
@@ -53,6 +64,7 @@
 - 有证据边界的 LLM 整理：只向模型发送最多 5 条已检索资料的标题、摘要、来源和时间；结论必须引用证据编号。无 Key 时使用确定性规则整理。
 - 确定性规则引擎：计算计划后单股/行业比例、下跌 10%/20%/30% 情景、规则冲突和信息完整性。
 - 市场证据快照：用真实、缓存或演示价格计算近 5/20/60 日变化、MA20 距离、20 日量比、RSI、距 60 日高点和波动；每项同时说明“它不能证明什么”。
+- 定量核实：在股票研究页把自然语言历史问题转换为可编辑条件，用户明确确认后运行确定性检验；展示时间顺序样本内/样本外、交易成本、最大回撤、最长不利阶段、参数敏感性、收益集中度和 A 股成交限制。结果只使用审慎结论，并可带入决策验证及历史记录。
 - 决策记录：保存原计划、规则冲突、用户选择和修改后金额，并支持 CSV 导出。
 - 90 秒课堂 Demo：预制科技股补仓案例，展示结构化解析、证据缺口、42% 单股仓位和修改前后变化。
 - 匿名用户测试：生成测试编号，记录用时、风险认可、最终选择、满意度、复用及付费测试意愿，并导出 CSV。
@@ -89,6 +101,7 @@ src/decision_review/   JSON理由解析、受控检索、规则引擎与审查�
 src/data_providers/    AKShare/演示数据适配与回退
 src/analytics/         技术指标和持仓计算
 src/risk_engine/       确定性风险规则
+src/quant_verification/自然语言候选规则、确定性历史检验与统计审计
 src/database/          SQLite 和 CSV 备份恢复
 src/ui/                通用界面、图表、Secrets 和密码门
 src/services/          可供网页、API和未来移动端复用的业务服务
@@ -167,6 +180,22 @@ uvicorn api:app --reload --port 8000
 接口：
 
 - `GET /health`
+- `GET /opportunity`（FastAPI 独立机会检查页）
+- `POST /profile/parse`、`GET|POST|PUT /profile`、`POST /profile/confirm`
+- `GET|PUT /profile/rules`
+- `GET|POST /workspaces`、`GET|PUT|DELETE /workspaces/{id}`
+- `POST /workspaces/{id}/apply-template`、`POST /workspaces/{id}/preview-change`
+- `GET /workspace`、`GET /workspace/config`（独立个性化工作台与当前配置）
+- `POST /workspace/command`（仅生成配置预览）
+- `POST /workspace/command/{command_id}/confirm`、`POST /workspace/command/{command_id}/cancel`
+- `POST /workspace/undo`、`POST /workspace/reset`
+- `GET|POST /ai/providers`、`PUT|DELETE /ai/providers/{id}`
+- `POST /ai/providers/{id}/test`、`POST /ai/providers/{id}/set-default`
+- `GET /ai/providers/{id}/capabilities`、`GET /ai-settings`
+- `POST /opportunity/analyze`、`POST /opportunity/ocr`
+- `POST /opportunity/check-rules`、`POST /opportunity/check-portfolio`、`POST /opportunity/report`
+- `POST /trade/precheck`
+- `POST /education/explain`
 - `GET /etf-tool`（ETF 持仓体检页面）
 - `GET /etf/search?keyword=沪深300`
 - `GET /etf/detail/510300`
@@ -182,13 +211,46 @@ uvicorn api:app --reload --port 8000
 - `GET /stocks/600519/summary`
 - `GET /stocks/600519/prices?days=366`
 - `GET /stocks/600519/risks`
+- `GET /stocks/600519/financial-health`（三张财务报表合并与四项勾稽）
+- `GET /stocks/600519/evidence?reason=...`（按用户原话检索并标注来源）
 - `POST /v1/onboarding/parse`
 - `POST /v1/decision/parse`
 - `POST /v1/decision/review`
+- `POST /v1/quant/parse`（本地生成候选检验条件，无需 AI Key）
+- `POST /v1/quant/run`（确认后运行确定性演示检验）
+- `POST /pre-trade/check-ai`（解释交易前规则结果并提出确认问题）
+- `POST /metrics/explain-ai`（用白话解释已提供的金融指标）
+- `POST /portfolio/explain-ai`（解释已计算的持仓暴露和风险标签）
+
+定量核实的输入确认、时间切分、交易成本、失败状态和决策联动口径见 [QUANT_VERIFICATION_ARCHITECTURE.md](QUANT_VERIFICATION_ARCHITECTURE.md)。
+AI 的交易前防错、交易后复盘、指标解释和组合风险提示词边界见 [AI_DECISION_PROMPTS.md](AI_DECISION_PROMPTS.md)。
 
 ETF 工具优先通过 AKShare 获取真实 ETF 名单与基金定期披露持仓，在线失败时依次使用最近缓存和明确标记的演示数据。启动 API 后打开 `http://127.0.0.1:8000/etf-tool` 即可测试。若需要固定演示环境，设置 `ETF_USE_DEMO_DATA=true`。持仓是定期披露数据，不是盘中实时持仓；主题暴露按基金名称或业绩比较基准推断。
 
-交易复盘页面可在 `http://127.0.0.1:8000/trade-tool` 使用。需要独立部署时，可直接发布 [单文件页面](static/trade-review-standalone/index.html)，修改其中的 `API_BASE` 指向后端地址；跨域源通过 `CORS_ALLOW_ORIGINS` 配置。AI 报告默认使用确定性 mock；正式配置使用 `AI_PROVIDER=mock|openai|compatible`、`OPENAI_API_KEY`、可选 `OPENAI_BASE_URL` 和 `AI_MODEL`。旧变量 `AI_REPORT_PROVIDER` 仅作为兼容别名保留。
+交易复盘页面可在 `http://127.0.0.1:8000/trade-tool` 使用。需要独立部署时，可直接发布 [单文件页面](static/trade-review-standalone/index.html)，修改其中的 `API_BASE` 指向后端地址；跨域源通过 `CORS_ALLOW_ORIGINS` 配置。AI 报告默认使用确定性 mock；正式配置使用 `AI_PROVIDER=mock|openai|compatible`、`OPENAI_API_KEY`、可选 `OPENAI_BASE_URL`、`AI_MODEL` 和 `AI_API_MODE=chat`。HKGAI 与 DeepSeek 均走 OpenAI-compatible Chat Completions；Claude 原生适配器尚未开放。普通用户页面不提供密钥录入。若管理员需要通过受保护的后端 API 管理额外模型，必须同时配置 `AI_PROVIDER_ADMIN_TOKEN` 和 `AI_PROVIDER_ENCRYPTION_KEY`（Fernet 主密钥）；未配置时接口会拒绝请求或拒绝保存明文 Key。旧变量 `AI_REPORT_PROVIDER` 仅作为兼容别名保留。
+
+### AI 模型优先级与 HKGAI 默认配置
+
+桌面平台的模型选择顺序为：当前登录用户的个人选择 → 平台 HKGAI → `Mock / 本地规则模式`。个人选择保存在按登录邮箱哈希隔离的服务器端用户快照中，只影响该用户；浏览器只收到提供商名称、模型名称、连接状态和是否为默认模型，不会收到 API Key 或上游接口地址。
+
+平台管理员在服务器 Secrets 中配置：
+
+```env
+AI_PROVIDER=compatible
+AI_DISPLAY_NAME=HKGAI
+OPENAI_BASE_URL=https://test-new-api.hkchat.app/v1
+AI_MODEL=REPLACE_WITH_HKGAI_MODEL_NAME
+AI_API_MODE=chat
+OPENAI_API_KEY=REPLACE_WITH_A_NEW_REVOKABLE_KEY
+```
+
+不要把真实值写入 `.env.example`、前端 JavaScript、HTML、Git、浏览器存储、对话记录或日志。曾经出现在截图、聊天或提交中的 Key 必须先在 HKGAI 管理后台撤销，再创建新 Key。只有 Key 和模型名称都存在时，HKGAI 才会显示为可用；连接失败时可重试、切换模型，或继续使用明确标记的规则版结果。
+
+模型设置接口：
+
+- `GET /ai/providers`：只返回安全的公开元数据；
+- `POST /ai/providers/{provider_id}/set-default`：保存当前用户的默认模型；
+- `POST /ai/providers/{provider_id}/test`：由服务器测试连接，不把密钥发送给浏览器。
 
 ### 接入新版安心看股桌面平台
 
@@ -196,6 +258,10 @@ ETF 工具优先通过 AKShare 获取真实 ETF 名单与基金定期披露持�
 
 - `/etf-tool`：ETF 持仓诊断；
 - `/trade-tool`：持仓交易复盘。
+
+股票研究页现已包含原生“财报体检”标签。它从资产负债表、利润表和现金流量表按相同报告日合并数据，检查利润现金转化、应收增速、存货增速和资产负债率。同比只比较去年同报告期；经营现金流使用金额口径，不会把“现金流占收入百分比”误当成现金金额。缺少字段时显示“数据不足”，不让 AI 补写。
+
+研究问题输入框会把用户的具体问题拆为公开披露、财务报表和价格变化等核实路径。当前公开资料与财报勾稽可并行执行；每一项都会显示实际来源与可用状态。
 
 两个入口由桌面平台统一承载，但分析接口仍由当前 FastAPI 服务提供。开发环境分别启动：
 
@@ -327,11 +393,38 @@ Streamlit Community Cloud 的本地 SQLite 文件不是永久存储，重启或�
 
 ```bash
 source .venv/bin/activate       # Windows: .venv\Scripts\activate
-python -m pytest
+PYTHONPATH=. .venv/bin/python -m pytest -q   # macOS / Linux
+# Windows PowerShell: $env:PYTHONPATH="."; .venv\Scripts\python -m pytest -q
 python -m compileall -q app.py pages src
 ```
 
-当前验收：`61 passed`。除原有行情与持仓契约外，还覆盖智能研判驾驶舱、自然语言规则提取、理由分类、公告标题匹配的保守表达、新闻规范化、来源分类、去重、时间筛选、无 Key 证据整理、市场证据快照、42% 演示仓位、损失情景、严重表达停止审查、修改后审查持久化、匿名测试 CSV 和名称搜索容错。
+当前 Python 验收：`183 passed`。除原有行情与持仓契约外，还覆盖个人规则自然语言解析、确认门、单一持仓和行业超限、ETF 重复暴露、社交内容风险、交易前理由完整性，自然语言工作台的主题/复合命令/确认撤销、全局助手会话与页面上下文，量化规则解析、逐条件筛选、组合情景，以及 HKGAI 平台默认、未配置时的 Mock 回退、用户模型隔离、公开模型目录脱敏和密钥不回显。
+
+桌面 Sites 前端要求 Node.js 22 或更高版本：
+
+```bash
+cd sites_frontend
+npm run lint
+npm run build
+node --test tests/rendered-html.test.mjs
+```
+
+前端集成验收当前为 `11 passed`，包含工作台、主题、局部社交信号、四步交易前检查、全局 AI 助手跨路由挂载与确认门、AI 模型设置、服务器端密钥边界与个人模型优先级、ETF/交易复盘、个人量化工作台和无 Python 后端时的定量核实。
+
+## 个人量化 MVP
+
+桌面网页版新增 `/quant`（`/quant/screener` 同页入口），核心顺序是：自然语言描述 → 逐条确认 → 固定演示池筛选 → 历史验证 → 组合情景 → 规则偏离提醒。
+
+FastAPI 新增：
+
+- `POST /quant/rules/parse`：把中文想法整理成候选条件，模糊阈值返回澄清问题；
+- `/quant/rules` 及 `/{rule_set_id}/confirm`：保存、修改、删除和显式确认规则；
+- `POST /quant/screen`：逐条返回通过、未通过、缺失、日期、定义和来源；
+- `POST /quant/portfolio/risk` 与 `/scenario`：计算持仓/行业集中、重复暴露与线性情景影响；
+- `/quant/alerts`：生成和管理规则偏离或数据缺失提醒；
+- 原有 `/v1/quant/run`：补充年化收益/波动、Sharpe、Sortino、换手、成本敏感性、参数敏感性和样本内外说明。
+
+当前筛选与历史检验仍使用明确标注的固定演示研究样本，不伪装成全市场或实时结果；缺失数据为 `unknown`，不会当作通过。详见 [量化 MVP 实现说明](QUANT_MVP_IMPLEMENTATION.md)。
 
 ## 常见错误排查
 

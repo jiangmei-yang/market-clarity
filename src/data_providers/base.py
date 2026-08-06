@@ -45,6 +45,9 @@ class MarketDataProvider(ABC):
     def get_financial_indicators(self, code: str) -> DataResult: ...
 
     @abstractmethod
+    def get_financial_statements(self, code: str) -> DataResult: ...
+
+    @abstractmethod
     def get_company_profile(self, code: str) -> DataResult: ...
 
     @abstractmethod
@@ -60,7 +63,11 @@ class MarketDataProvider(ABC):
 PRICE_COLUMNS = ["date", "open", "high", "low", "close", "volume"]
 FINANCIAL_COLUMNS = [
     "report_date", "revenue", "net_profit", "revenue_yoy", "profit_yoy",
-    "roe", "debt_ratio", "operating_cash_flow",
+    "roe", "debt_ratio", "operating_cash_flow", "operating_cash_flow_sales_ratio",
+]
+FINANCIAL_STATEMENT_COLUMNS = [
+    "report_date", "revenue", "net_profit", "operating_cash_flow",
+    "accounts_receivable", "inventory", "total_assets", "total_liabilities",
 ]
 ANNOUNCEMENT_COLUMNS = ["date", "title", "category", "url"]
 NEWS_COLUMNS = ["published_at", "title", "summary", "source", "url"]
@@ -86,6 +93,23 @@ def ensure_financial_schema(frame: pd.DataFrame) -> pd.DataFrame:
     for col in FINANCIAL_COLUMNS[1:]:
         result[col] = pd.to_numeric(result[col], errors="coerce")
     return result[FINANCIAL_COLUMNS].sort_values("report_date").reset_index(drop=True)
+
+
+def ensure_financial_statement_schema(frame: pd.DataFrame) -> pd.DataFrame:
+    result = frame.copy() if frame is not None else pd.DataFrame()
+    for col in FINANCIAL_STATEMENT_COLUMNS:
+        if col not in result:
+            result[col] = pd.NaT if col == "report_date" else float("nan")
+    result["report_date"] = pd.to_datetime(result["report_date"], errors="coerce")
+    for col in FINANCIAL_STATEMENT_COLUMNS[1:]:
+        result[col] = pd.to_numeric(result[col], errors="coerce")
+    return (
+        result[FINANCIAL_STATEMENT_COLUMNS]
+        .dropna(subset=["report_date"])
+        .drop_duplicates(subset=["report_date"], keep="first")
+        .sort_values("report_date")
+        .reset_index(drop=True)
+    )
 
 
 def ensure_announcement_schema(frame: pd.DataFrame) -> pd.DataFrame:

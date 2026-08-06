@@ -17,7 +17,7 @@ from src.decision_review.analyzer import RuleReasonAnalyzer
 from src.decision_review.rules import review_rules
 from src.risk_engine import RiskEngine
 from src.services import build_event_radar, build_information_feed, build_research_cockpit, build_research_evidence, filter_information_items
-from src.services.news_intelligence import RuleInformationAnalyzer
+from src.services.news_intelligence import InformationAssessment, RuleInformationAnalyzer, SafeInformationAnalyzer
 
 
 @pytest.mark.parametrize("raw,expected", [("600519", "600519"), ("SH600519", "600519"), ("000001.SZ", "000001"), ("1", "000001")])
@@ -27,6 +27,15 @@ def test_normalize_stock_code(raw, expected):
 
 def test_normalize_rejects_bad_input():
     with pytest.raises(ValueError): normalize_stock_code("贵州茅台")
+
+
+def test_resolve_stock_rejects_unknown_code_when_real_security_list_is_available(monkeypatch):
+    market = DataService(use_demo=False)
+    cached = DataResult(pd.DataFrame([{"code": "600519", "name": "贵州茅台", "industry": "食品饮料"}]), "名单缓存")
+    monkeypatch.setattr(market, "_read_cache", lambda *args, **kwargs: cached)
+    assert market.resolve_stock("600519") == ("600519", "贵州茅台")
+    with pytest.raises(ValueError, match="A 股证券名单"):
+        market.resolve_stock("999999")
 
 
 def test_moving_averages():
@@ -223,6 +232,36 @@ def test_information_no_match_does_not_claim_event_is_false():
     }]})
     assert assessment.status == "未找到直接相关信息"
     assert "不存在" in assessment.summary and "不是" in assessment.summary
+
+
+@pytest.mark.parametrize("unsafe", [
+    InformationAssessment(status="找到相关正式披露", summary="建议立即加仓", evidence_indices=[1], mode="openai"),
+    InformationAssessment(status="找到相关正式披露", summary="资料已经确认该说法", evidence_indices=[99], mode="openai"),
+    InformationAssessment(status="找到相关正式披露", summary="资料已经确认该说法", evidence_indices=[], mode="openai"),
+])
+def test_information_ai_output_falls_back_when_advisory_or_ungrounded(unsafe):
+    analyzer = SafeInformationAnalyzer()
+    analyzer.ai = type("UnsafeAnalyzer", (), {"analyze": lambda self, reason, feed: unsafe})()
+    result = analyzer.analyze("朋友说有大订单", {"items": [{
+        "published_at": "2026-07-21T10:00", "title": "重大订单公告", "category": "正式披露", "matched_terms": ["订单"],
+    }]})
+    assert result.mode == "rules"
+    assert result.status == "找到相关正式披露"
+    assert "加仓" not in result.summary
+
+
+def test_information_ai_output_keeps_valid_bounded_citation():
+    valid = InformationAssessment(
+        status="找到相关正式披露", summary="检索到相关正式披露，请阅读原文核对范围。",
+        key_points=["[1] 重大订单公告（正式披露）"], evidence_indices=[1], mode="openai",
+    )
+    analyzer = SafeInformationAnalyzer()
+    analyzer.ai = type("ValidAnalyzer", (), {"analyze": lambda self, reason, feed: valid})()
+    result = analyzer.analyze("朋友说有大订单", {"items": [{
+        "published_at": "2026-07-21T10:00", "title": "重大订单公告", "category": "正式披露", "matched_terms": ["订单"],
+    }]})
+    assert result.mode == "openai"
+    assert result.evidence_indices == [1]
 
 
 def test_stock_name_alone_is_not_evidence_for_specific_claim():

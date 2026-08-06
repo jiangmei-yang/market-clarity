@@ -48,7 +48,8 @@ async function generateAI() {
     });
     const result = await readJson(response);
     state.aiReport = result.ai_report;
-    document.querySelector("#aiReport").textContent = state.aiReport;
+    const section = (title, items) => `<section><h4>${title}</h4>${items?.length ? `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : `<p>暂无足够数据判断。</p>`}</section>`;
+    document.querySelector("#aiReport").innerHTML = `<div class="ai-summary"><strong>${escapeHtml(result.summary || "复盘说明已生成")}</strong><span>只解释系统计算事实</span></div><div class="ai-result-grid">${section("事实", result.facts)}${section("行为信号", result.behavior_signals)}${section("金融知识", result.knowledge_explanations)}${section("下次检查项", result.next_checklist)}</div><details><summary>查看完整复盘文字</summary><pre>${escapeHtml(state.aiReport)}</pre></details>`;
     document.querySelector("#modelUsed").textContent = result.model_used === "mock" ? "生成方式：本地规则模板（未调用外部模型）" : `模型：${result.model_used}`;
     document.querySelector("#copyButton").disabled = false;
   }
