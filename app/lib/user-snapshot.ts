@@ -35,6 +35,11 @@ export type UserSnapshot = {
   strategyNotifications?: unknown;
   strategyBacktestHistory?: unknown;
   strategyAudit?: unknown;
+  strategyResearchRuns?: unknown;
+  savedResearchStrategies?: unknown;
+  strategyResearchAudit?: unknown;
+  strategyResearchEvidence?: unknown;
+  strategyResearchSearchLedger?: unknown;
   aiDefaultProviderId?: string;
   aiTaskRouting?: unknown;
   modelEvaluationRuns?: unknown;

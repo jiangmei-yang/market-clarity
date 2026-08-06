@@ -60,10 +60,10 @@ test("keeps the course evidence center usable in English",()=>{
   const sources=read("app/components/data-source-evaluation-runner.tsx");
   assert.match(page,/Current reproducible baseline/);
   assert.match(page,/Cross-user evidence/);
-  assert.match(page,/External-user task funnel/);
+  assert.match(page,/Strategy Lab external novice funnel/);
   assert.match(page,/deduplicated participants/);
   assert.match(page,/attitude response, not a waitlist or revenue event/);
-  assert.match(page,/External-user behavioral price test/);
+  assert.match(page,/Supporting evidence · pre-trade review pricing test \(excluded from this strategy MVP\)/);
   assert.match(page,/What must be validated next/);
   assert.match(model,/Fixed real-model task set/);
   assert.match(agent,/Three Agent functional tasks/);

@@ -1,13 +1,20 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 const read = (path) => fs.readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+const root=fileURLToPath(new URL("..",import.meta.url));
+function execute(script){const result=spawnSync(process.execPath,["--import","tsx","--input-type=module","--eval",script],{cwd:root,encoding:"utf8"});assert.equal(result.status,0,result.stderr);return JSON.parse(result.stdout.trim());}
 
-test("keeps one primary entry on the quant research page", () => {
+test("keeps one presentation-first entry into Strategy Lab", () => {
   const page = read("app/quant/page.tsx");
-  assert.match(page, /<QuantWorkspace \/>/);
-  assert.doesNotMatch(page, /QuantGoalRouter|NaturalStrategyAssistant/);
+  const home = read("app/components/strategy-lab-home.tsx");
+  assert.match(page, /<StrategyLabHome \/>/);
+  assert.match(home, /把一句投资想法/);
+  assert.match(home, /href="\/quant\/factors"/);
+  assert.doesNotMatch(page, /QuantWorkspace|QuantGoalRouter|NaturalStrategyAssistant/);
 });
 
 test("shows the real AI state in the product shell without making it home content", () => {
@@ -22,7 +29,116 @@ test("keeps behavior evidence in evaluation surfaces instead of the product home
   const evaluation = read("app/evaluation/page.tsx");
   assert.doesNotMatch(workbench, /课程验证仍需汇总/);
   assert.match(evaluation, /跨用户证据/);
-  assert.match(evaluation, /核心任务漏斗/);
+  assert.match(evaluation, /策略研究室外部新手漏斗/);
+});
+
+test("publishes one falsifiable Module 8 evidence contract instead of calling the working slice validated",()=>{
+  const contract=read("app/lib/mvp-evidence-contract.ts");
+  const panel=read("app/components/mvp-evidence-contract.tsx");
+  const page=read("app/evaluation/page.tsx");
+  const memo=read("../MVP_EVIDENCE_CONTRACT.md");
+  for(const field of ["criticalAssumption","observableBehavior","experiment","verticalSlice","primaryMetric","guardrails","releaseBoundary","decisionRules"])assert.match(contract,new RegExp(field));
+  assert.match(contract,/首轮 5\/5 能完成；扩展样本至少 15 人且完成率 ≥80%/);
+  assert.match(contract,/至少 40% 在 14 天后自然回来重检/);
+  assert.match(panel,/唯一主指标/);
+  assert.match(panel,/工程就绪，外部证据未完成/);
+  assert.match(panel,/继续 \/ 收窄 \/ 转向 \/ 停止/);
+  assert.match(page,/MvpEvidenceContract/);
+  assert.match(memo,/工程上已具备 MVP 实验条件/);
+  assert.match(memo,/不是“MVP 已验证”/);
+});
+
+test("makes Strategy Lab the single course MVP and records a privacy-minimized behavior funnel",()=>{
+  const scope=read("../MVP_SCOPE.md");
+  const adr=read("../docs/decisions/0006-strategy-lab-course-mvp.md");
+  const pilot=read("app/components/strategy-lab-pilot.tsx");
+  const route=read("app/api/evaluation/strategy-lab/route.ts");
+  const store=read("app/lib/strategy-lab-study.ts");
+  const flow=read("app/components/strategy-research/strategy-research-flow.tsx");
+  assert.match(scope,/\/pilot\/strategy-lab/);
+  assert.match(adr,/状态：Accepted/);
+  assert.match(pilot,/不会保存输入正文、股票代码、金额或身份/);
+  for(const event of ["plan_created","run_started","run_completed","result_viewed","save_completed","comprehension_submitted","abandoned"])assert.match(store,new RegExp(event));
+  assert.match(flow,/onStudyEvent\?\.\("save_completed"/);
+  assert.match(route,/isPilotReleaseEnabled/);
+  assert.match(route,/format.*csv/);
+  assert.doesNotMatch(store,/original_input|custom_symbols|thesis_plain/);
+  assert.match(pilot,/Method saved—check three ideas/);
+  assert.match(pilot,/understandingScore/);
+  assert.match(store,/understanding_score/);
+  assert.match(store,/transitionRequirements/);
+  assert.match(store,/UNIQUE\(session_key,event_name,attempt_index\)/);
+  assert.match(store,/14 \* DAY/);
+  assert.match(store,/HMAC/);
+  assert.match(route,/resolveStrategyLabInvite/);
+  assert.match(route,/configuredStrategyLabBuildId/);
+  assert.match(route,/\.\.\.body,\.\.\.invite,buildId/);
+  assert.match(route,/recordStrategyLabSafetyReview/);
+  assert.doesNotMatch(pilot,/setRelation\("external"\)/);
+  assert.match(pilot,/Invitation code/);
+});
+
+test("requires every precommitted evidence gate before declaring the MVP ready",()=>{
+  const passing={participants:15,started:15,saved:12,firstFiveSaved:5,revisited:6,comprehensionPassed:12,completionSeconds:300,p95RunSeconds:10,safetyIncidents:0,safetyReviewed:true,segments:{"投资经验不足1年":5,"ETF或长期持有":5,"近3个月主动交易":5}};
+  const script=`const {evaluateStrategyLabMvpEvidence}=await import('./app/lib/mvp-evidence-contract.ts');const passing=${JSON.stringify(passing)};console.log(JSON.stringify({pass:evaluateStrategyLabMvpEvidence(passing).ready,firstFive:evaluateStrategyLabMvpEvidence({...passing,firstFiveSaved:4}).ready,understanding:evaluateStrategyLabMvpEvidence({...passing,comprehensionPassed:11}).ready,coverage:evaluateStrategyLabMvpEvidence({...passing,segments:{...passing.segments,'近3个月主动交易':4}}).ready,revisit:evaluateStrategyLabMvpEvidence({...passing,revisited:5}).ready,latency:evaluateStrategyLabMvpEvidence({...passing,p95RunSeconds:11}).ready,safetyUnknown:evaluateStrategyLabMvpEvidence({...passing,safetyIncidents:null,safetyReviewed:false}).ready}));`;
+  assert.deepEqual(execute(script),{pass:true,firstFive:false,understanding:false,coverage:false,revisit:false,latency:false,safetyUnknown:false});
+});
+
+test("enforces the study event state machine and 14-day revisit boundary as behavior",()=>{
+  const script=`const {assessStrategyLabTransition,isStrategyLabRevisit}=await import('./app/lib/strategy-lab-study.ts');const attempt=(events,next)=>{try{return assessStrategyLabTransition(events,next)}catch(error){return error.message}};const actual=[];let events=[];for(const event of ['lab_viewed','plan_created','run_started','run_completed','result_viewed','save_started','save_completed','comprehension_submitted']){actual.push(attempt(events,event));events=[...events,event]}const day=86400000;const now=Date.parse('2026-07-31T00:00:00.000Z');console.log(JSON.stringify({valid:actual,outOfOrder:attempt(['lab_viewed'],'save_completed'),duplicate:attempt(['lab_viewed'],'lab_viewed'),terminal:attempt(['lab_viewed','abandoned'],'plan_created'),day13:isStrategyLabRevisit(new Date(now-13*day).toISOString(),now),day14:isStrategyLabRevisit(new Date(now-14*day).toISOString(),now)}));`;
+  assert.deepEqual(execute(script),{valid:Array(8).fill("record"),outOfOrder:"体验事件顺序无效：save_completed",duplicate:"idempotent",terminal:"该体验会话已经结束",day13:false,day14:true});
+});
+
+test("records failed attempts and retries as separate state-machine events",()=>{
+  const script=`const {assessStrategyLabEventTransition}=await import('./app/lib/strategy-lab-study.ts');const event=(event_name,attempt_index=0)=>({event_name,attempt_index});const base=[event('lab_viewed'),event('plan_created'),event('run_started',1),event('run_failed',1)];const attempt=(rows,next,index)=>{try{return assessStrategyLabEventTransition(rows,next,index)}catch(error){return error.message}};console.log(JSON.stringify({retry:attempt(base,'run_started',2),duplicate:attempt(base,'run_failed',1),skip:attempt(base,'run_started',3),completeWithoutStart:attempt(base,'run_completed',2)}));`;
+  assert.deepEqual(execute(script),{retry:"record",duplicate:"idempotent",skip:"重试必须紧接上一次失败",completeWithoutStart:"运行结果缺少对应的开始事件"});
+});
+
+test("freezes active cohort/build and fails safety evidence closed",()=>{
+  const store=read("app/lib/strategy-lab-study.ts");
+  const privacy=read("../PRIVACY_DATA_MAP.md");
+  assert.match(store,/strategy_lab_study_cohorts/);
+  assert.match(store,/该招募批次已绑定其他构建或样本关系/);
+  assert.match(store,/生产环境必须配置策略体验构建编号/);
+  assert.match(store,/strategy_lab_safety_reviews/);
+  assert.match(store,/当前外部批次尚无可复核体验记录/);
+  assert.match(store,/isSafetyReviewCurrent/);
+  assert.match(store,/safetyIncidents: null/);
+  assert.match(store,/created_at >= datetime\('now','-90 days'\)/);
+  assert.match(privacy,/过期行可能晚于第 90 天物理擦除/);
+});
+
+test("invalidates a safety review when new cohort events arrive",()=>{
+  const script=`const {isSafetyReviewCurrent}=await import('./app/lib/strategy-lab-study.ts');console.log(JSON.stringify({empty:isSafetyReviewCurrent('2026-07-31T12:00:00.000Z',[]),current:isSafetyReviewCurrent('2026-07-31T12:00:00.000Z',['2026-07-31T11:00:00.000Z','2026-07-31T12:00:00.000Z']),stale:isSafetyReviewCurrent('2026-07-31T12:00:00.000Z',['2026-07-31T12:00:00.001Z']),invalid:isSafetyReviewCurrent('bad',['2026-07-31T11:00:00.000Z'])}));`;
+  assert.deepEqual(execute(script),{empty:false,current:true,stale:false,invalid:false});
+});
+
+test("carries a reconstructable planning trace without storing prompts",()=>{
+  const types=read("app/lib/strategy-research/types.ts");
+  const planner=read("app/lib/strategy-research/planner.ts");
+  const server=read("app/lib/strategy-research/server.ts");
+  const harness=read("app/lib/strategy-research/research-harness.ts");
+  for(const field of ["template_version","attempted_providers","latency_ms","fallback_reason","schema_valid","usage_status"])assert.match(types,new RegExp(field));
+  assert.match(planner,/strategy-planner-v1/);
+  assert.match(server,/response\.provider/);
+  assert.match(server,/response\.model/);
+  assert.match(server,/planning_trace:run\.planning_trace/);
+  assert.match(harness,/planning_trace:input\.plan\.planning_trace/);
+});
+
+test("uses an effective release gate that stops new pilot writes but preserves reads and deletion",()=>{
+  const behavior=execute(`const {isPilotReleaseEnabled}=await import('./app/lib/mvp-evidence-contract.ts');console.log(JSON.stringify({defaultOn:isPilotReleaseEnabled(undefined),falseOff:isPilotReleaseEnabled('false'),caseOff:isPilotReleaseEnabled(' FALSE '),trueOn:isPilotReleaseEnabled('true')}));`);
+  assert.deepEqual(behavior,{defaultOn:false,falseOff:false,caseOff:false,trueOn:true});
+  assert.match(read("../.env.example"),/MVP_PILOT_ENABLED=false/);
+  const pilotPage=read("app/pilot/page.tsx");
+  const studyRoute=read("app/api/evaluation/user-study/route.ts");
+  const pilotRoute=read("app/api/evaluation/pilot/route.ts");
+  const labRoute=read("app/api/evaluation/strategy-lab/route.ts");
+  assert.match(pilotPage,/if\(!isPilotReleaseEnabled\(\)\)/);
+  assert.match(studyRoute,/export async function POST[\s\S]*if\(!isPilotReleaseEnabled\(\)\)/);
+  assert.match(pilotRoute,/export async function POST[\s\S]*if\(!isPilotReleaseEnabled\(\)\)/);
+  assert.match(labRoute,/export async function POST[\s\S]*if \(!isPilotReleaseEnabled\(\)\)/);
+  assert.doesNotMatch(studyRoute,/export async function DELETE[\s\S]*isPilotReleaseEnabled/);
 });
 
 test("opens stock research on the evidence summary instead of an empty chart", () => {
@@ -158,7 +274,7 @@ test("uses an action-based pricing experiment instead of counting an attitude qu
   assert.match(page,/event:"view"/);
   assert.match(page,/participantRelation/);
   assert.match(page,/不会自动扣费/);
-  assert.match(evaluation,/外部用户行为型价格测试/);
+  assert.match(evaluation,/旁证 · 交易前审查价格测试（不计入本轮策略 MVP）/);
   assert.match(evaluation,/均未计入/);
   assert.match(evaluation,/不把态度题算作收入/);
 });
@@ -180,7 +296,7 @@ test("measures the real task funnel instead of only completed feedback",()=>{
   assert.match(decision,/status:"task_completed"/);
   assert.match(decision,/status:"abandoned"/);
   assert.match(decision,/navigator\.sendBeacon/);
-  assert.match(evaluation,/外部用户核心任务漏斗/);
+  assert.match(evaluation,/旁证 · 交易前审查任务（不计入本轮策略 MVP）/);
   assert.match(evaluation,/完成率/);
   assert.match(evaluation,/转化率/);
   assert.match(evaluation,/15 秒内快速结束/);

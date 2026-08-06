@@ -5,7 +5,7 @@ const categoryKeys={
   holdings:["holdings","watched"],
   decisions:["decisionRecords","latestDecision","opportunityChecks"],
   ai:["agentTasks"],
-  quant:["quantVerifications","quantTasks","quantStrategies","quantSchedules","quantSignals","quantAudit","quantPaperPortfolios"],
+  quant:["quantVerifications","quantTasks","quantStrategies","quantSchedules","quantSignals","quantAudit","quantPaperPortfolios","strategyResearchRuns","savedResearchStrategies","strategyResearchAudit","strategyResearchEvidence"],
   profile:["rules","investorProfile","investmentRules","exploratoryPreferences"],
 } as const;
 

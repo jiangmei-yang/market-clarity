@@ -1,6 +1,7 @@
 import {NextResponse} from "next/server";
 import {deleteCurrentUserStudyData,exportCurrentUserStudyCsv,exportCurrentUserStudySessionsCsv,readUserStudySummary,saveUserStudyEvent,saveUserStudySession} from "@/app/lib/user-study";
 import {PARTICIPANT_RELATIONS,PARTICIPANT_SEGMENTS,validateStudyInput,type StudyInput} from "@/app/lib/user-study-validation";
+import {isPilotReleaseEnabled} from "@/app/lib/mvp-evidence-contract";
 
 export async function GET(request:Request){
   try{
@@ -12,6 +13,7 @@ export async function GET(request:Request){
 }
 
 export async function POST(request:Request){
+  if(!isPilotReleaseEnabled())return NextResponse.json({status:"paused",message:"本轮受控体验研究已停止，不再接收新记录。"},{status:503});
   let body:Record<string,unknown>;
   try{body=await request.json() as Record<string,unknown>;}catch{return NextResponse.json({message:"请求格式无效"},{status:400});}
   if(body.eventType==="session"){

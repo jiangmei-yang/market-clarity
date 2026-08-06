@@ -33,7 +33,16 @@ export async function GET(request: Request) {
   const limit = Math.min(10, Math.max(1, Number(url.searchParams.get("limit")) || 5));
   if (!query) return NextResponse.json({ query, items: [] });
 
-  const baseUrl = (process.env.ANXIN_API_URL || "http://127.0.0.1:8001").replace(/\/$/, "");
+  if (!process.env.ANXIN_API_URL) {
+    try {
+      const items = await searchPublicAStocks(query, limit);
+      return NextResponse.json({ query, items, source: "东方财富公开股票搜索", is_demo: false, status: items.length ? "live" : "empty" });
+    } catch (error) {
+      return NextResponse.json({ query, items: [], status: "unavailable", message: error instanceof Error ? error.message : "股票搜索暂不可用" }, { status: 503 });
+    }
+  }
+
+  const baseUrl = process.env.ANXIN_API_URL.replace(/\/$/, "");
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8_000);
   try {

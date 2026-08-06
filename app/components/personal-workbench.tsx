@@ -7,7 +7,7 @@ import {
   ChevronDown, CircleAlert, FileSearch, Gauge,
   MessageSquareWarning, Plus, Save, Settings2, ShieldCheck,
   Sparkles, Undo2, RotateCcw, X, Palette, Eye, EyeOff,
-  Cpu, KeyRound, PlugZap, Trash2, Maximize2, Minimize2, Search,
+  Cpu, KeyRound, PlugZap, Trash2, Maximize2, Minimize2, Search, FlaskConical,
 } from "lucide-react";
 import { AppNavigation } from "./app-navigation";
 
@@ -41,6 +41,7 @@ type Snapshot = {
   workspaceVersions?: Array<{ configId: string; workspace: Workspace; createdAt: string }>;
   workspaceAudit?: Array<{ commandId: string; intent: string; proposedChanges: string[]; status: "applied" | "cancelled"; createdAt: string; confirmedAt?: string }>;
   aiProviders?: AIProviderProfile[];
+  strategyResearchEvidence?: Array<{ id:string; strategy_id:string; strategy_version:number; strategy_name:string; headline:string; data_cutoff:string; limitations:string[]; research_only:true; allow_live_order:false }>;
   [key: string]: unknown;
 };
 
@@ -133,19 +134,19 @@ export function PersonalWorkbench({ surface, authenticatedUser, initialAIProvide
   return (
     <div className="personal-shell" data-theme={activeWorkspace.theme.themeId} data-font-scale={activeWorkspace.theme.fontScale} data-radius={activeWorkspace.theme.radius} data-motion={activeWorkspace.theme.motion}>
       <a className="skip-link" href="#main-content">{pick(isEnglish, "跳到主要内容", "Skip to main content")}</a>
-      <AppNavigation activePath={surface === "home" ? "/" : `/${surface}`} userName={authenticatedUser} syncLabel={status === "saving" ? pick(isEnglish, "正在保存", "Saving") : status === "ready" ? pick(isEnglish, "已同步", "Synced") : status === "loading" ? pick(isEnglish, "正在载入", "Loading") : pick(isEnglish, "仅本机暂存", "Saved on this device")} />
+      <AppNavigation activePath={surface === "home" ? "/workspace" : `/${surface}`} userName={authenticatedUser} syncLabel={status === "saving" ? pick(isEnglish, "正在保存", "Saving") : status === "ready" ? pick(isEnglish, "已同步", "Synced") : status === "loading" ? pick(isEnglish, "正在载入", "Loading") : pick(isEnglish, "仅本机暂存", "Saved on this device")} />
 
       <main className="personal-main" id="main-content">
         <header className="personal-topbar" data-guide="page-header">
           <div><span>{pick(isEnglish, "当前工作台", "Current workspace")}</span><select aria-label={pick(isEnglish, "切换工作台", "Switch workspace")} value={activeWorkspace.id} onChange={(event) => persist({ activeWorkspaceId: event.target.value, workspaceAudit: [...(snapshot.workspaceAudit ?? []), { commandId: `switch-${Date.now()}`, intent: "switch_workspace", proposedChanges: [`switch:${event.target.value}`], status: "applied" as const, createdAt: new Date().toISOString(), confirmedAt: new Date().toISOString() }].slice(-200) })}>{workspaces.map((item) => <option key={item.id} value={item.id}>{workspaceDisplayName(item.name, isEnglish)}</option>)}</select><span className="personal-theme-label"><Palette />{isEnglish ? activeWorkspace.theme.themeId.replaceAll("_", " ") : THEME_LABELS[activeWorkspace.theme.themeId]}</span></div>
           <div className="personal-top-actions">
-            <Link href="/workspace"><Settings2 />{pick(isEnglish, "编辑工作台", "Edit workspace")}</Link>
+            <Link href="/workspace/edit"><Settings2 />{pick(isEnglish, "编辑工作台", "Edit workspace")}</Link>
             <Link href="/ai-settings"><Sparkles />{pick(isEnglish, "模型设置", "AI models")}<Badge variant="outline">{aiProviders.find((item)=>item.isDefault)?.providerId === "mock" ? pick(isEnglish, "规则可用", "Rules available") : aiProviderDisplayName(aiProviders.find((item)=>item.isDefault)?.displayName, isEnglish)}</Badge></Link>
           </div>
         </header>
         {surface === "home" && <HomeSurface snapshot={snapshot} profile={profile} workspace={activeWorkspace} aiProviders={aiProviders} />}
         {surface === "profile" && <ProfileSurface profile={profile} rules={snapshot.investmentRules ?? []} onSave={(draft) => persist({ investorProfile: { ...draft.profile, confirmedAt: new Date().toISOString() }, investmentRules: draft.rules })} />}
-        {surface === "opportunity" && <OpportunitySurface profile={profile ?? DEFAULT_PROFILE} holdings={snapshot.holdings ?? {}} onSave={(entry) => persist({ opportunityChecks: [entry, ...(snapshot.opportunityChecks ?? [])].slice(0, 20) })} />}
+        {surface === "opportunity" && <OpportunitySurface profile={profile ?? DEFAULT_PROFILE} holdings={snapshot.holdings ?? {}} strategyEvidence={snapshot.strategyResearchEvidence?.[0]} onSave={(entry) => persist({ opportunityChecks: [entry, ...(snapshot.opportunityChecks ?? [])].slice(0, 20) })} />}
         {surface === "workspace" && <WorkspaceSurface key={activeWorkspace.id} workspace={activeWorkspace} workspaces={workspaces} />}
         {surface === "portfolio" && <PortfolioSurface holdings={snapshot.holdings ?? {}} profile={profile ?? DEFAULT_PROFILE} />}
         {surface === "ai-settings" && <AISettingsSurface key={aiProviders.map((item)=>`${item.providerId}:${item.isDefault}`).join("|")} initialProviders={aiProviders} initialPrivacyMode={aiPrivacyMode} onProvidersChange={setAIProviders} onPrivacyModeChange={setAIPrivacyMode} />}
@@ -227,7 +228,7 @@ function HomeWorkspaceModule({ section, snapshot, profile, holdings, total, pref
 }
 
 function homeModuleRoute(type: ModuleType, code: string) {
-  if (type.startsWith("quant_")) return "/quant";
+  if (type.startsWith("quant_")) return "/quant/factors";
   if (type.includes("etf")) return "/etf-tool";
   if (RISK_MODULES.has(type) || EXPOSURE_MODULES.has(type) || PORTFOLIO_MODULES.has(type)) return "/portfolio";
   if (REVIEW_MODULES.has(type)) return type.includes("social") || type === "opportunity_check" ? "/opportunity" : "/analysis?view=history";
@@ -368,7 +369,7 @@ function HomeGuidedModule({ type }: { type: ModuleType }) {
     investment_goal: ["写下你为什么投资", "目标决定需要关注的时间、风险和复核频率。", "/profile"],
     risk_tolerance: ["先设提醒边界", "把最大单一持仓与可接受亏损写成可检查规则。", "/profile"],
     etf_basics: ["先看 ETF 底层持有什么", "名称相似不等于分散，先检查成分和重复暴露。", "/etf-tool"],
-    simulation_portfolio: ["先模拟，再判断流程是否适合你", "模拟结果不进入真实交易，也不承诺收益。", "/quant"],
+    simulation_portfolio: ["先模拟，再判断流程是否适合你", "模拟结果不进入真实交易，也不承诺收益。", "/quant/factors"],
     term_explainer: ["遇到术语时再解释", "从集中度、回撤和波动率开始，不必一次学完。", "/guide"],
     learning_card: ["用一条真实问题开始", "研究一只标的，再把证据带入决策审查。", "/analysis?view=research"],
   };
@@ -806,7 +807,7 @@ function precheckItemCopy(item: PrecheckResult["checks"][number], isEnglish: boo
   return { ...item, ...(copies[item.title] ?? {}) };
 }
 
-function OpportunitySurface({ profile, holdings, onSave }: { profile: InvestorProfile; holdings: Record<string, Holding>; onSave: (entry: { checkedAt: string; text: string; level: string; score: number }) => Promise<void> }) {
+function OpportunitySurface({ profile, holdings, strategyEvidence, onSave }: { profile: InvestorProfile; holdings: Record<string, Holding>; strategyEvidence?:NonNullable<Snapshot["strategyResearchEvidence"]>[number]; onSave: (entry: { checkedAt: string; text: string; level: string; score: number }) => Promise<void> }) {
   const { isEnglish } = useI18n();
   const [text, setText] = useState("");
   const [sourceMode, setSourceMode] = useState<"text" | "image" | "url">("text");
@@ -822,7 +823,7 @@ function OpportunitySurface({ profile, holdings, onSave }: { profile: InvestorPr
   };
   const precheck = () => { if(!/^\d{6}$/.test(code)){setError(pick(isEnglish, "请输入 6 位股票或 ETF 代码。", "Enter a 6-digit stock or ETF code."));setReviewStep(2);return;}if(Number(amount)<=0){setError(pick(isEnglish, "请输入计划金额，才能计算计划后的仓位。", "Enter a planned amount to calculate the post-plan exposure."));setReviewStep(2);return;}setError("");setResult(precheckTrade({ amount: Number(amount), portfolioValue: total || 200000, currentAssetValue: current, currentSectorValue: current, reason: `${reasonCategory}：${text}`, holdingPeriod, exitCondition, recentChange: 0, source: reasonCategory === "他人推荐" ? "social" : "self", similarAssets: current ? [holdings[code]?.name ?? code] : [] }, profile)); };
   const example = pick(isEnglish, "最近半导体新闻很多，朋友说公司有大订单，现在不上车就晚了。", "Semiconductor news is everywhere. A friend says the company won a large order, and that it will be too late if I do not get in now.");
-  return <div className="personal-content opportunity"><section className="personal-page-heading"><span>{pick(isEnglish, "机会检查", "Claim check")}</span><h1>{pick(isEnglish, "先拆开这条说法，再看它是否符合你的规则", "Separate the claim from the evidence before applying your rules")}</h1><p>{pick(isEnglish, "粘贴社交平台文字、链接中的核心说法或截图文字。系统描述可观察特征，不判断作者动机。", "Paste text from a social post, the key claim from a link, or text from a screenshot. The check identifies observable patterns without judging the author's intent.")}</p></section>
+  return <div className="personal-content opportunity"><section className="personal-page-heading"><span>{pick(isEnglish, "机会检查", "Claim check")}</span><h1>{pick(isEnglish, "先拆开这条说法，再看它是否符合你的规则", "Separate the claim from the evidence before applying your rules")}</h1><p>{pick(isEnglish, "粘贴社交平台文字、链接中的核心说法或截图文字。系统描述可观察特征，不判断作者动机。", "Paste text from a social post, the key claim from a link, or text from a screenshot. The check identifies observable patterns without judging the author's intent.")}</p></section>{strategyEvidence&&<section className="strategy-evidence-handoff"><header><FlaskConical/><div><span>{pick(isEnglish,"已带入一项历史研究证据","Historical research evidence attached")}</span><strong>{strategyEvidence.strategy_name} · {pick(isEnglish,`版本 ${strategyEvidence.strategy_version}`,`Version ${strategyEvidence.strategy_version}`)}</strong></div><Badge variant="outline">{pick(isEnglish,`数据截至 ${strategyEvidence.data_cutoff}`,`Data through ${strategyEvidence.data_cutoff}`)}</Badge></header><p>{strategyEvidence.headline}</p><small>{pick(isEnglish,"这是一项历史样本证据，只能辅助核对当前判断；不会生成个股推荐、买卖指令或未来收益预测。","This historical-sample evidence can only support the current review. It does not generate stock recommendations, orders, or return forecasts.")}</small></section>}
     <section className="opportunity-input"><div className="opportunity-step-label"><b>1</b><span><strong>{pick(isEnglish, "先检查原话", "Check the original wording")}</strong><small>{pick(isEnglish, "此时不需要股票代码或计划金额", "No stock code or planned amount is needed yet")}</small></span></div><div className="opportunity-source-tabs"><button className={sourceMode === "text" ? "active" : undefined} onClick={() => setSourceMode("text")}>{pick(isEnglish, "粘贴文字", "Paste text")}</button><button className={sourceMode === "image" ? "active" : undefined} onClick={() => setSourceMode("image")}>{pick(isEnglish, "上传截图", "Upload screenshot")}</button><button className={sourceMode === "url" ? "active" : undefined} onClick={() => setSourceMode("url")}>{pick(isEnglish, "粘贴链接", "Paste link")}</button></div>{sourceMode === "image" && <label className="opportunity-upload"><input type="file" accept="image/*" onChange={(event) => setImageName(event.target.files?.[0]?.name ?? "")} /><span>{imageName || pick(isEnglish, "选择一张截图", "Choose a screenshot")}</span><small>{pick(isEnglish, "当前版本不上传图片；请把需要检查的文字粘贴到下方。", "This version does not upload the image. Paste the text you want to check below.")}</small></label>}{sourceMode === "url" && <label className="opportunity-url"><span>{pick(isEnglish, "内容链接", "Content link")}</span><Input type="url" value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://…" /><small>{pick(isEnglish, "当前只记录来源地址，不自动抓取需要登录的平台内容。", "The link is recorded as a source reference. Content behind a login is not fetched automatically.")}</small></label>}<Textarea value={text} onChange={(event) => { setText(event.target.value); setError(""); }} rows={5} placeholder={pick(isEnglish, "粘贴你看到的原话", "Paste the exact wording you saw")} />{error && !analysis && <p className="personal-error" role="alert">{error}</p>}<div className="opportunity-submit-row"><Button variant="outline" onClick={() => { setText(example); setError(""); setAnalysis(undefined); setResult(undefined); }}>{pick(isEnglish, "填入示例", "Use example")}</Button><Button onClick={analyze}><Gauge data-icon="inline-start" />{pick(isEnglish, "先检查内容", "Check content")}</Button></div><small>{pick(isEnglish, "先看语言和证据特征；只有你继续做交易计划检查时，才会询问代码和金额。", "This first pass checks wording and evidence. Code and amount are requested only if you continue to the trade-plan check.")}</small></section>
     {analysis && <><section className="opportunity-verdict"><div><span>{pick(isEnglish, "先看结论", "What needs attention")}</span><h2>{analysis.signals.length ? pick(isEnglish, `这条说法有 ${analysis.signals.length} 处需要先核对`, `${analysis.signals.length} ${analysis.signals.length === 1 ? "item needs" : "items need"} verification`) : pick(isEnglish, "没有发现明显催促话术", "No obvious urgency language found")}</h2><p>{analysis.scores.evidence < 50 ? pick(isEnglish, "目前没有足够来源确认其中的具体主张。", "The text does not include enough source information to verify its specific claims.") : pick(isEnglish, "已看到部分可核对信息，仍需打开原始来源。", "Some verifiable information is present, but the original source still needs to be opened.")}</p></div><aside><span>{pick(isEnglish, "与你的决定有什么关系", "What this means for your decision")}</span><strong>{analysis.scores.evidence < 50 ? pick(isEnglish, "不能把这条说法单独作为行动依据", "Do not treat this claim alone as a basis for action") : pick(isEnglish, "先确认来源，再结合价格与仓位", "Verify the source, then consider price and exposure")}</strong></aside></section><section className="social-findings"><header><span>{pick(isEnglish, "为什么需要核对", "Why these items need verification")}</span><Badge variant="outline">{pick(isEnglish, "原文证据", "Evidence from the text")}</Badge></header>{analysis.signals.map((rawSignal) => { const signal = opportunitySignalCopy(rawSignal, isEnglish); return <article key={`${rawSignal.category}-${rawSignal.excerpt}`}><span>{signal.category}</span><q>{signal.excerpt}</q><p>{signal.detail}</p></article>; })}<div className="social-unknown"><strong>{pick(isEnglish, "还缺什么", "What is still missing")}</strong><p>{pick(isEnglish, "公告或财报原文、信息发布日期，以及什么情况会推翻这项判断。", "The original disclosure or financial report, the publication date, and a condition that would invalidate the claim.")}</p></div></section>
       <section className="precheck-form progressive-check"><header><span>{pick(isEnglish, "继续检查交易计划", "Continue to the trade-plan check")} · {reviewStep}/3</span><p>{reviewStep===1?pick(isEnglish, "你为什么关注它？先选最接近的一项。", "Why are you considering it? Choose the closest option."):reviewStep===2?pick(isEnglish, "再补充标的和金额，用于计算计划后的仓位。", "Add the asset and amount to calculate your post-plan exposure."):pick(isEnglish, "最后确认时间范围和判断失效条件。", "Finally, set the time horizon and an invalidation condition.")}</p></header>

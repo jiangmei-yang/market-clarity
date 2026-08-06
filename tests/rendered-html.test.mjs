@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+process.env.MVP_PILOT_ENABLED = "true";
 const workerPromise = import(new URL("../dist/server/index.js", import.meta.url).href);
 
 async function render(path = "/", init = {}) {
@@ -14,46 +15,62 @@ async function render(path = "/", init = {}) {
   );
 }
 
-test("server-renders the personal investment workbench", async () => {
-  const response = await render();
+test("server-renders the configurable AI workbench", async () => {
+  const response = await render("/workspace");
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
   assert.match(html, /<title>Market Clarity · 安心看股<\/title>/i);
-  assert.match(html, /市场概览/);
-  assert.match(html, /打开股票研究/);
-  assert.match(html, /今日决策台/);
   assert.match(html, /长期投资工作台/);
-  assert.match(html, /模块顺序、宽度和图表类型来自你的工作台配置/);
-  assert.match(html, /研究当前标的/);
-  assert.match(html, /核实一条消息/);
-  assert.match(html, /我的规则/);
-  assert.match(html, /调整工作台/);
+  assert.match(html, /模块目录/);
+  assert.match(html, /自然语言/);
+  assert.match(html, /保存布局/);
+  assert.match(html, /配置已保存/);
+  assert.match(html, /外部数据会显示来源与时间/);
   assert.doesNotMatch(html, /我的使用记录/);
   assert.match(html, /Market Clarity/);
   assert.match(html, /aria-label="工作台导航"/);
+  assert.match(html, /(?:href="\/workspace"[^>]*class="nav-primary"|class="nav-primary"[^>]*href="\/workspace")/);
   assert.match(html, /本页怎么用/);
   assert.match(html, /id="main-content"/);
   assert.match(html, /data-theme="light_quiet"/);
   assert.match(html, /安静浅色/);
 });
 
-test("puts recorded personal decisions before the default stock chart", async () => {
-  const response = await render();
+test("puts workspace identity before modules and guarded save controls", async () => {
+  const response = await render("/workspace");
   const html = await response.text();
-  const decisionDesk = html.indexOf("今日决策台");
-  const workspaceView = html.indexOf("当前视图");
-  const matrix = html.indexOf("示例观察列表");
-  const nextStep = html.indexOf("下一步");
-  assert.ok(decisionDesk > -1);
-  assert.ok(workspaceView > decisionDesk);
-  assert.ok(matrix > workspaceView);
-  assert.ok(nextStep > matrix);
-  assert.match(html, /没有提醒不等于没有风险/);
-  assert.match(html, /最大持仓/);
-  assert.match(html, /示例观察列表/);
-  assert.match(html, /示例不会进入组合风险计算/);
+  const identity = html.indexOf("当前工作台");
+  const catalog = html.indexOf("模块目录");
+  const save = html.indexOf("保存布局");
+  assert.ok(identity > -1);
+  assert.ok(catalog > identity);
+  assert.ok(save > -1);
+  assert.match(html, /配置已保存/);
+  assert.match(html, /定时执行需部署调度器/);
+});
+
+test("server-renders the public whole-platform homepage and pricing journey", async () => {
+  const response = await render("/");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /把投资想法，变成能反复验证的方法/);
+  assert.match(html, /AI 工作台/);
+  assert.match(html, /策略研究室/);
+  assert.match(html, /href="\/pricing"/);
+  assert.match(html, /不荐股 · 不连接券商/);
+  assert.doesNotMatch(html, /自动下单|收益保证|Business Accounts|Retirement/);
+
+  const pricing = await render("/pricing");
+  assert.equal(pricing.status, 200);
+  const pricingHtml = await pricing.text();
+  assert.match(pricingHtml, /研究体验版/);
+  assert.match(pricingHtml, /¥19/);
+  assert.match(pricingHtml, /当前课堂 MVP 不接支付/);
+  assert.match(pricingHtml, /这不是自动交易订阅/);
+  assert.match(pricingHtml, /href="\/pilot\/strategy-lab"/);
+  assert.doesNotMatch(pricingHtml, /href="\/pilot"/);
 });
 
 test("keeps onboarding contextual and navigation grouped by user goal", async () => {
@@ -191,7 +208,7 @@ test("server-renders privacy-preserving AI model settings", async () => {
   assert.match(html, /AI 模型设置/);
   assert.match(html, /服务器端密钥/);
   assert.match(html, /本地规则模式/);
-  assert.doesNotMatch(html, /sk-[a-zA-Z0-9]/);
+  assert.doesNotMatch(html, /\bsk-[a-zA-Z0-9_-]{20,}\b/);
 });
 
 test("server-renders an honest evaluation center and reproducible classroom demo", async () => {
@@ -454,19 +471,15 @@ test("runs deterministic quant verification only after explicit confirmation", a
   assert.match(runBody.result.conclusion, /提供有限支持|削弱当前判断|证据不足/);
 });
 
-test("server-renders the explainable personal quant workbench", async () => {
+test("server-renders the presentation-first Strategy Lab homepage", async () => {
   const response = await render("/quant");
   assert.equal(response.status, 200);
   const html = await response.text();
-  const source = await readFile(new URL("../app/components/quant-workspace.tsx", import.meta.url), "utf8");
-  assert.match(html, /量化研究/);
-  assert.match(html, /生成可检查的研究配置/);
-  assert.match(html, /Agent 执行计划/);
-  assert.match(source, /历史模拟/);
-  assert.match(source, /模拟组合/);
-  assert.match(source, /没有数据，就没有绩效数字/);
-  assert.match(html, /确认前不会运行或保存/);
-  assert.doesNotMatch(html, /固定演示股票池/);
+  assert.match(html, /AI 策略研究室/);
+  assert.match(html, /把一句投资想法/);
+  assert.match(html, /开始一次研究/);
+  assert.match(html, /不是黑箱/);
+  assert.match(html, /历史研究，不是荐股/);
   assert.doesNotMatch(html, /稳赚|必涨|强烈推荐|目标价/);
 });
 
