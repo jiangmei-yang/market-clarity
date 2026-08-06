@@ -1,9 +1,4 @@
-import { PersonalWorkbench } from "./components/personal-workbench";
-import { requireChatGPTUser } from "./chatgpt-auth";
+import { PlatformMarketingHome } from "./components/platform-marketing-home";
+import "./marketing-site.css";
 
-export const dynamic = "force-dynamic";
-
-export default async function Page() {
-  const user = await requireChatGPTUser("/");
-  return <PersonalWorkbench surface="home" authenticatedUser={user.fullName ?? user.email.split("@")[0]} />;
-}
+export default function Page(){return <PlatformMarketingHome/>}

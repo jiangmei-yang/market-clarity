@@ -35,9 +35,9 @@ const GUIDES:Array<{match:(path:string)=>boolean;guide:Guide}>=[
     {title:"加入相近主题 ETF",body:"比较共同重仓股，而不是只看基金名称。",action:"回到诊断区",href:"/etf-tool#tool-main"},
     {title:"带入组合检查",body:"诊断结束后再看重复暴露对个人组合的影响。",action:"打开我的组合",href:"/portfolio"},
   ]}},
-  {match:path=>path==="/quant",guide:{title:"量化研究怎么用",summary:"从一句可检验的低频规则开始。",tasks:[
-    {title:"描述研究目标",body:"例如：每周检查低波动 ETF，先模拟。",action:"打开策略输入",href:"/quant#tool-main"},
-    {title:"确认规则与成本",body:"检查标的、频率、手续费、滑点和数据区间。",action:"回到策略预览",href:"/quant#tool-main"},
+  {match:path=>path==="/quant" || path==="/quant/factors",guide:{title:"量化研究怎么用",summary:"从一句可检验的低频规则开始。",tasks:[
+    {title:"描述研究目标",body:"例如：每周检查低波动 ETF，先模拟。",action:"打开策略输入",href:"/quant/factors#tool-main"},
+    {title:"确认规则与成本",body:"检查标的、频率、手续费、滑点和数据区间。",action:"回到策略预览",href:"/quant/factors#tool-main"},
     {title:"比较稳定性",body:"重点看回撤、样本外结果和换手率，不只看累计收益。",action:"查看产品边界",href:"/features"},
   ]}},
   {match:path=>path==="/trade-tool",guide:{title:"交易复盘怎么用",summary:"导入记录后先读计算事实，再读行为解释。",tasks:[
@@ -48,7 +48,7 @@ const GUIDES:Array<{match:(path:string)=>boolean;guide:Guide}>=[
   {match:path=>path==="/agent",guide:{title:"任务助手怎么用",summary:"给出目标；系统负责组织工具，但修改必须确认。",tasks:[
     {title:"描述结果而不是工具",body:"例如：找出我的 ETF 重复暴露并放到工作台。",action:"打开任务输入",href:"/agent#tool-main"},
     {title:"核对执行计划",body:"确认数据来源、工具步骤和哪些操作需要批准。",action:"查看可用能力",href:"/features"},
-    {title:"应用或撤销工作台修改",body:"界面变化始终先预览，并保留历史版本。",action:"编辑工作台",href:"/workspace"},
+    {title:"应用或撤销工作台修改",body:"界面变化始终先预览，并保留历史版本。",action:"编辑工作台",href:"/workspace/edit"},
   ]}},
   {match:path=>path==="/features",guide:{title:"产品说明怎么用",summary:"查询平台当前可用能力、入口与限制。",tasks:[
     {title:"先看产品闭环",body:"理解信息层与决策层如何连接。",action:"查看核心闭环",href:"/features#capability-flow"},
@@ -89,15 +89,15 @@ const EN_GUIDES: Array<{match:(path:string)=>boolean;guide:Guide}> = [
     {title:"Add a similar theme",body:"Compare underlying holdings rather than fund names alone.",action:"Return to diagnosis",href:"/etf-tool#tool-main"},
     {title:"Connect it to the portfolio",body:"Review how overlap changes your overall exposure.",action:"Open my portfolio",href:"/portfolio"},
   ]}},
-  {match:path=>path==="/quant",guide:{title:"Using quant research",summary:"Start with one testable, low-frequency rule.",tasks:[
-    {title:"Describe the research goal",body:"For example: check low-volatility ETFs weekly and simulate first.",action:"Open strategy input",href:"/quant#tool-main"},
-    {title:"Confirm rules and costs",body:"Check the asset, frequency, fees, slippage and data period.",action:"Review the strategy",href:"/quant#tool-main"},
+  {match:path=>path==="/quant" || path==="/quant/factors",guide:{title:"Using quant research",summary:"Start with one testable, low-frequency rule.",tasks:[
+    {title:"Describe the research goal",body:"For example: check low-volatility ETFs weekly and simulate first.",action:"Open strategy input",href:"/quant/factors#tool-main"},
+    {title:"Confirm rules and costs",body:"Check the asset, frequency, fees, slippage and data period.",action:"Review the strategy",href:"/quant/factors#tool-main"},
     {title:"Compare stability",body:"Read drawdown, out-of-sample results and turnover—not cumulative return alone.",action:"View product limits",href:"/features"},
   ]}},
   {match:path=>path==="/agent",guide:{title:"Using the task agent",summary:"Describe the outcome. The system organizes tools; changes still need confirmation.",tasks:[
     {title:"Describe an outcome, not a tool",body:"For example: find ETF overlap and place the risk module on my workspace.",action:"Open task input",href:"/agent#tool-main"},
     {title:"Review the execution plan",body:"Check sources, tool steps and which actions need approval.",action:"View available capabilities",href:"/features"},
-    {title:"Apply or undo changes",body:"Workspace changes are previewed first and keep version history.",action:"Edit workspace",href:"/workspace"},
+    {title:"Apply or undo changes",body:"Workspace changes are previewed first and keep version history.",action:"Edit workspace",href:"/workspace/edit"},
   ]}},
   {match:path=>path==="/features",guide:{title:"Using the product guide",summary:"Check current capabilities, entry points and limits.",tasks:[
     {title:"Understand the core loop",body:"See how the information and decision layers connect.",action:"View the capability flow",href:"/features#capability-flow"},

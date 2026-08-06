@@ -346,6 +346,17 @@ export const GENERATED_ROUTE_CAPABILITIES=[
     "source": "app/api/evaluation/pilot/route.ts"
   },
   {
+    "route": "/api/evaluation/strategy-lab",
+    "kind": "api",
+    "methods": [
+      "DELETE",
+      "GET",
+      "POST",
+      "PUT"
+    ],
+    "source": "app/api/evaluation/strategy-lab/route.ts"
+  },
+  {
     "route": "/api/evaluation/user-study",
     "kind": "api",
     "methods": [
@@ -675,12 +686,28 @@ export const GENERATED_ROUTE_CAPABILITIES=[
     "source": "app/pilot/page.tsx"
   },
   {
+    "route": "/pilot/strategy-lab",
+    "kind": "page",
+    "methods": [
+      "GET"
+    ],
+    "source": "app/pilot/strategy-lab/page.tsx"
+  },
+  {
     "route": "/portfolio",
     "kind": "page",
     "methods": [
       "GET"
     ],
     "source": "app/portfolio/page.tsx"
+  },
+  {
+    "route": "/pricing",
+    "kind": "page",
+    "methods": [
+      "GET"
+    ],
+    "source": "app/pricing/page.tsx"
   },
   {
     "route": "/product-guide/ask",
@@ -786,6 +813,30 @@ export const GENERATED_ROUTE_CAPABILITIES=[
       "GET"
     ],
     "source": "app/quant/engines/[engine_id]/route.ts"
+  },
+  {
+    "route": "/quant/factors",
+    "kind": "page",
+    "methods": [
+      "GET"
+    ],
+    "source": "app/quant/factors/page.tsx"
+  },
+  {
+    "route": "/quant/factors/evaluate",
+    "kind": "api",
+    "methods": [
+      "POST"
+    ],
+    "source": "app/quant/factors/evaluate/route.ts"
+  },
+  {
+    "route": "/quant/factors/plan",
+    "kind": "api",
+    "methods": [
+      "POST"
+    ],
+    "source": "app/quant/factors/plan/route.ts"
   },
   {
     "route": "/quant/licenses",
@@ -918,6 +969,82 @@ export const GENERATED_ROUTE_CAPABILITIES=[
       "GET"
     ],
     "source": "app/quant/strategy/route.ts"
+  },
+  {
+    "route": "/quant/strategy-lab",
+    "kind": "page",
+    "methods": [
+      "GET"
+    ],
+    "source": "app/quant/strategy-lab/page.tsx"
+  },
+  {
+    "route": "/quant/strategy-lab/catalog",
+    "kind": "api",
+    "methods": [
+      "GET"
+    ],
+    "source": "app/quant/strategy-lab/catalog/route.ts"
+  },
+  {
+    "route": "/quant/strategy-lab/plan",
+    "kind": "api",
+    "methods": [
+      "POST"
+    ],
+    "source": "app/quant/strategy-lab/plan/route.ts"
+  },
+  {
+    "route": "/quant/strategy-lab/runs",
+    "kind": "api",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "source": "app/quant/strategy-lab/runs/route.ts"
+  },
+  {
+    "route": "/quant/strategy-lab/strategies",
+    "kind": "api",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "source": "app/quant/strategy-lab/strategies/route.ts"
+  },
+  {
+    "route": "/quant/strategy-lab/strategies/:id",
+    "kind": "api",
+    "methods": [
+      "DELETE",
+      "GET",
+      "POST"
+    ],
+    "source": "app/quant/strategy-lab/strategies/[id]/route.ts"
+  },
+  {
+    "route": "/quant/strategy-lab/strategies/:id/decision-evidence",
+    "kind": "api",
+    "methods": [
+      "POST"
+    ],
+    "source": "app/quant/strategy-lab/strategies/[id]/decision-evidence/route.ts"
+  },
+  {
+    "route": "/quant/strategy-lab/strategies/:id/rerun",
+    "kind": "api",
+    "methods": [
+      "POST"
+    ],
+    "source": "app/quant/strategy-lab/strategies/[id]/rerun/route.ts"
+  },
+  {
+    "route": "/quant/strategy-lab/universes",
+    "kind": "api",
+    "methods": [
+      "GET"
+    ],
+    "source": "app/quant/strategy-lab/universes/route.ts"
   },
   {
     "route": "/quant/strategy/:id",
@@ -1093,6 +1220,14 @@ export const GENERATED_ROUTE_CAPABILITIES=[
     "source": "app/shared/[token]/page.tsx"
   },
   {
+    "route": "/strategy-research",
+    "kind": "page",
+    "methods": [
+      "GET"
+    ],
+    "source": "app/strategy-research/page.tsx"
+  },
+  {
     "route": "/strategy/confirm",
     "kind": "api",
     "methods": [
@@ -1171,6 +1306,14 @@ export const GENERATED_ROUTE_CAPABILITIES=[
       "POST"
     ],
     "source": "app/workspace/command/[command_id]/confirm/route.ts"
+  },
+  {
+    "route": "/workspace/edit",
+    "kind": "page",
+    "methods": [
+      "GET"
+    ],
+    "source": "app/workspace/edit/page.tsx"
   },
   {
     "route": "/workspace/export",

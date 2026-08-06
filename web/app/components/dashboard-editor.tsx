@@ -71,7 +71,7 @@ const modulePreview=(type:ModuleType,available:boolean,isEnglish=false)=>{
     risk_tolerance:{eyebrow:"个人边界",value:"尚未确认",items:["单股上限","可承受损失","冷静期"],action:"设置风险边界",href:"/profile"},
     simulation_portfolio:{eyebrow:"模拟组合",value:"0 个标的",items:["不接券商","可随时重置","仅作模拟"],action:"创建模拟持仓",href:"/portfolio"},
     term_explainer:{eyebrow:"概念解释",value:"输入一个术语",items:["一句话解释","为何重要","如何核对"],action:"打开 AI 助手",href:"/agent"},
-    quant_backtest:{eyebrow:"历史模拟",value:"等待规则与数据",items:["基准","成本","样本外"],action:"打开量化研究",href:"/quant"},
+    quant_backtest:{eyebrow:"历史模拟",value:"等待规则与数据",items:["基准","成本","样本外"],action:"打开量化研究",href:"/quant/factors"},
   };
   const previewsEn:Partial<typeof previews>={
     portfolio_overview:{eyebrow:"Portfolio status",value:"Calculated after import",items:["Total assets","Largest holding","Sector concentration"],action:"Open portfolio",href:"/portfolio"},
@@ -86,7 +86,7 @@ const modulePreview=(type:ModuleType,available:boolean,isEnglish=false)=>{
     risk_tolerance:{eyebrow:"Personal boundaries",value:"Not confirmed",items:["Single-asset cap","Tolerable loss","Cooling-off period"],action:"Set risk boundaries",href:"/profile"},
     simulation_portfolio:{eyebrow:"Paper portfolio",value:"0 assets",items:["No broker link","Reset anytime","Simulation only"],action:"Create paper portfolio",href:"/portfolio"},
     term_explainer:{eyebrow:"Term explainer",value:"Enter a term",items:["Plain-language meaning","Why it matters","How to verify"],action:"Open AI assistant",href:"/agent"},
-    quant_backtest:{eyebrow:"Historical simulation",value:"Waiting for rules and data",items:["Benchmark","Costs","Out-of-sample"],action:"Open quant research",href:"/quant"},
+    quant_backtest:{eyebrow:"Historical simulation",value:"Waiting for rules and data",items:["Benchmark","Costs","Out-of-sample"],action:"Open quant research",href:"/quant/factors"},
   };
   const selected=isEnglish?previewsEn[type]:previews[type];
   return selected??{eyebrow:available?pick(isEnglish,"模块已连接","Module connected"):pick(isEnglish,"数据未配置","Data not configured"),value:available?pick(isEnglish,"等待输入","Waiting for input"):pick(isEnglish,"选择数据源","Select a data source"),items:pick(isEnglish,["来源时间","计算口径","结果状态"],["Source time","Method","Result status"]),action:pick(isEnglish,"打开相关工具","Open related tool"),href:"/analysis"};

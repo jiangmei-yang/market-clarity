@@ -1,0 +1,11 @@
+import { NextResponse } from "next/server";
+import { planStrategy } from "@/app/lib/strategy-research/server";
+import type { ResearchGoal, StrategyDSL } from "@/app/lib/strategy-research/types";
+import { authenticatedOwnerKey } from "@/app/lib/user-snapshot";
+export async function POST(request:Request){
+  if(!await authenticatedOwnerKey())return NextResponse.json({message:"请先登录"},{status:401});
+  if(Number(request.headers.get("content-length")??0)>16_000)return NextResponse.json({message:"请求内容过大"},{status:413});
+  const body=await request.json().catch(()=>null) as {text?:unknown;mode?:unknown;goal?:unknown;ai_available?:unknown;starting_point_id?:unknown;universe_id?:unknown;custom_symbols?:unknown;candidate_budget?:unknown;max_rounds?:unknown;target_candidates?:unknown;search_mode?:unknown;max_positions?:unknown;base_dsl?:unknown;fixed_factors?:unknown;fixed_frequency?:unknown;fixed_dsl?:unknown}|null;
+  if(!body||typeof body.text!=="string"||!body.text.trim())return NextResponse.json({message:"请先描述一个想法或研究目标"},{status:422});
+  try{return NextResponse.json({plan:await planStrategy({text:body.text,mode:body.mode==="goal"?"goal":"idea",goal:typeof body.goal==="string"?body.goal as ResearchGoal:undefined,aiAvailable:body.ai_available!==false,startingPointId:typeof body.starting_point_id==="string"?body.starting_point_id:undefined,universeId:typeof body.universe_id==="string"?body.universe_id:undefined,customSymbols:Array.isArray(body.custom_symbols)?body.custom_symbols.filter((item):item is string=>typeof item==="string"):undefined,candidateBudget:Number(body.candidate_budget),maxRounds:Number(body.max_rounds),targetCandidates:Number(body.target_candidates),searchMode:body.search_mode==="stop_on_validation_target"?"stop_on_validation_target":"exhaust_budget",maxPositions:Number(body.max_positions),baseDsl:body.base_dsl&&typeof body.base_dsl==="object"?body.base_dsl as StrategyDSL:undefined,fixedFactors:Array.isArray(body.fixed_factors)?body.fixed_factors as StrategyDSL["factors"]:undefined,fixedFrequency:body.fixed_frequency==="monthly"||body.fixed_frequency==="biweekly"?body.fixed_frequency:undefined,fixedDsl:body.fixed_dsl&&typeof body.fixed_dsl==="object"?body.fixed_dsl as StrategyDSL:undefined})});}catch(error){return NextResponse.json({message:error instanceof Error?error.message:"无法整理策略"},{status:422});}
+}

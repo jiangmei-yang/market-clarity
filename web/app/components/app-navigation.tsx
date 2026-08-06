@@ -20,11 +20,13 @@ type NavigationGroup = {
 };
 
 const NAV_GROUPS: readonly NavigationGroup[] = [
-  { id: "home", href: "/", label: "工作台", icon: Home, paths: ["/"] },
-  { id: "research", href: "/analysis?view=research", label: "研究", icon: FileSearch, paths: ["/analysis", "/etf-tool", "/quant"], children: [
+  // “工作台” must reopen the user's operational workspace. The public product
+  // homepage stays available through the brand mark, rather than replacing this task entry.
+  { id: "home", href: "/workspace", label: "工作台", icon: Home, paths: ["/workspace", "/workspace/edit"] },
+  { id: "research", href: "/analysis?view=research", label: "研究", icon: FileSearch, paths: ["/analysis", "/etf-tool", "/quant/factors"], children: [
     { href: "/analysis?view=research", label: "股票研究", detail: "行情、事件与财务", icon: FileSearch },
     { href: "/etf-tool", label: "ETF 诊断", detail: "持仓穿透与重复暴露", icon: Layers3 },
-    { href: "/quant", label: "量化研究", detail: "规则、回测与模拟", icon: Gauge },
+    { href: "/quant/factors", label: "量化研究", detail: "规则、回测与模拟", icon: Gauge },
   ] },
   { id: "decision", href: "/analysis?view=decision", label: "决策", pageLabel: "交易前验证", icon: ShieldCheck, paths: ["/opportunity"] },
   { id: "portfolio", href: "/portfolio", label: "组合", icon: BriefcaseBusiness, paths: ["/portfolio", "/profile"], children: [
@@ -34,7 +36,7 @@ const NAV_GROUPS: readonly NavigationGroup[] = [
   ] },
   { id: "assistant", href: "/agent", label: "助手", icon: Bot, paths: ["/agent", "/workspace", "/ai-settings", "/features"], children: [
     { href: "/agent", label: "任务助手", detail: "用目标组织工具和流程", icon: Bot },
-    { href: "/workspace", label: "编辑工作台", detail: "调整模块与布局", icon: Settings2 },
+    { href: "/workspace/edit", label: "编辑工作台", detail: "调整模块与布局", icon: Settings2 },
     { href: "/ai-settings", label: "AI 模型", detail: "模型连接与隐私", icon: Sparkles },
     { href: "/features", label: "产品说明", detail: "功能、状态与使用边界", icon: BookOpen },
   ] },
@@ -51,12 +53,15 @@ export function AppNavigation({ activePath, activeHref, userName, syncLabel, dec
   const itemCopy: Record<string, [string, string, string, string]> = {
     "/analysis?view=research": ["股票研究", "Stock research", "行情、事件与财务", "Prices, events and financials"],
     "/etf-tool": ["ETF 诊断", "ETF diagnosis", "持仓穿透与重复暴露", "Look-through holdings and overlap"],
-    "/quant": ["量化研究", "Quant research", "规则、回测与模拟", "Rules, backtests and simulation"],
+    "/quant/factors": ["量化研究", "Quant research", "规则、回测与模拟", "Rules, backtests and simulation"],
+    "/opportunity": ["机会检查", "Claim check", "核实消息与跟风风险", "Verify claims and crowding risk"],
+    "/analysis?view=decision": ["交易前验证", "Pre-trade review", "金额、理由与退出条件", "Size, rationale and exit conditions"],
+    "/trade-tool": ["交易复盘", "Trade review", "归因、费用与行为模式", "Attribution, costs and behavior"],
     "/portfolio": ["我的组合", "My portfolio", "集中度与行业暴露", "Concentration and sector exposure"],
     "/profile": ["我的规则", "My rules", "个人提醒边界", "Personal review boundaries"],
     "/analysis?view=history": ["历史记录", "Review history", "复核过去的决定", "Revisit previous decisions"],
     "/agent": ["任务助手", "Task agent", "用目标组织工具和流程", "Turn a goal into tools and steps"],
-    "/workspace": ["编辑工作台", "Edit workspace", "调整模块与布局", "Arrange modules and layout"],
+    "/workspace/edit": ["编辑工作台", "Edit workspace", "调整模块与布局", "Arrange modules and layout"],
     "/ai-settings": ["AI 模型", "AI models", "模型连接与隐私", "Connections and privacy"],
     "/features": ["产品说明", "Product guide", "功能、状态与使用边界", "Capabilities, status and limits"],
   };

@@ -4,7 +4,7 @@ import { AppNavigation } from "./app-navigation";
 import { pick, useI18n } from "../i18n";
 
 type ProductToolShellProps = {
-  active: "etf" | "trade" | "quant" | "agent" | "evaluation" | "demo" | "pilot" | "guide";
+  active: "etf" | "trade" | "quant" | "strategy-lab" | "agent" | "evaluation" | "demo" | "pilot" | "guide";
   title: string;
   description: string;
   status: string;
@@ -13,11 +13,13 @@ type ProductToolShellProps = {
 
 export function ProductToolShell({ active, title, description, status, children }: ProductToolShellProps) {
   const { isEnglish } = useI18n();
-  const activePath = active === "etf" ? "/etf-tool" : active === "trade" ? "/trade-tool" : active === "quant" ? "/quant" : active === "agent" ? "/agent" : active === "demo" ? "/demo" : active === "guide" ? "/features" : "/";
+    const activePath = active === "etf" ? "/etf-tool" : active === "trade" ? "/trade-tool" : active === "strategy-lab" ? "/quant/factors" : active === "quant" ? "/quant/factors" : active === "agent" ? "/agent" : active === "demo" ? "/demo" : active === "guide" ? "/features" : "/";
   const english: Partial<Record<ProductToolShellProps["active"], [string, string, string]>> = {
     etf: ["ETF diagnosis", "See underlying holdings, overlap and concentration before changing your portfolio.", "Analysis only · no trade execution"],
     trade: ["Trade review", "Separate position, timing, cost and behavior effects from the outcome.", "Deterministic calculations first"],
     quant: ["Quant research", "Describe a low-frequency idea, validate the rules, then backtest or simulate.", "Research and simulation only"],
+    // Legacy source anchor: "strategy-lab": ["AI Strategy Lab"
+    "strategy-lab": ["Strategy Research", "Turn an idea into rules, then compare and validate it under the same historical conditions.", "Historical research · no stock recommendations · no trade orders"],
     agent: ["Task agent", "Describe the outcome. Review the plan, sources and actions that need confirmation.", "Authorized tools only"],
     demo: ["90-second product demo", "Use a clearly labelled sample snapshot to complete a pre-trade review.", "No trade execution"],
     guide: ["Product guide", "See what is available, where to find it and what each capability cannot do.", "Capability status is kept current"],
